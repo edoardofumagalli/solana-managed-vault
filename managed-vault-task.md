@@ -1,4 +1,4 @@
-# Task: Managed Vault Program (Solana / Pinocchio)
+# Task: Managed Vault Program (Solana / Anchor)
 
 ## Background Reading (Required Before Coding)
 
@@ -139,17 +139,18 @@ You must make and defend a choice for each. Write your reasoning — not just th
 
 ## Constraints
 
-- **Use Pinocchio** — zero-copy, no Anchor
-- CPI only to Token Program (pick SPL Token or Token-2022, commit to one)
+- **Use Anchor** — implement the program with idiomatic `#[program]` instructions, `#[derive(Accounts)]` account validation, PDA seed/bump constraints, and explicit `#[error_code]` errors
+- Do **not** use Pinocchio for this task
+- CPI only to Token Program via `anchor_spl` (pick SPL Token or Token-2022, commit to one)
 - All math in `u64` / `u128` — no floats, no external math libraries
-- Every instruction must emit logs sufficient for an indexer to reconstruct vault state
+- Every instruction must emit Anchor events/logs sufficient for an indexer to reconstruct vault state
 - No `unwrap()` in the program — all errors explicit and meaningful
 
 ---
 
 ## Test Plan
 
-Use Bankrun or `solana-program-test`. Required scenarios:
+Use Anchor's test workflow (`anchor test`) with TypeScript tests. Bankrun or `solana-program-test` can be used if you want faster or lower-level test execution. Required scenarios:
 
 ### Core Lifecycle
 - [ ] Init → deposit → request_withdraw → process_withdraw (full happy path)
@@ -184,7 +185,7 @@ Use Bankrun or `solana-program-test`. Required scenarios:
 ## Deliverables
 
 1. **ERC comparison doc** (before coding) — 1 page mapping ERC-4626/7540 to Solana
-2. **Program source** — compiles, deploys to localnet
+2. **Program source** — compiles with `anchor build`, deploys to localnet
 3. **Test suite** — all scenarios above passing
 4. **Design doc** — covers all 8 design decisions with reasoning
 5. **Cross-review** — each intern reviews the other's code and design doc before submission
