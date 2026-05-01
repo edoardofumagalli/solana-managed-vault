@@ -1,12 +1,5 @@
 # ERC-4626 / ERC-7540 to Solana Account Model Comparison
 
-Author: TODO
-Date: TODO
-
-## Goal
-
-TODO: In one short paragraph, explain what this document compares and why this comparison matters for the managed vault program.
-
 ## 1. High-Level Summary
 
 ERC-4626 standardizes the core model of a tokenized vault: users deposit an underlying asset and receive shares that represent a proportional claim on the vault's total managed assets. ERC-7540 extends this model for asynchronous flows, where withdrawals or redemptions may require a request phase before assets become claimable. On Solana, these ideas do not translate as a direct interface copy: instead of Solidity view functions returning values, an Anchor program stores state in accounts, validates explicitly passed accounts, and uses PDAs to represent vault state, token authorities, and withdrawal requests. The main design work is deciding which ERC concepts become on-chain accounts and instructions, and which become client-side or indexer-side calculations.
