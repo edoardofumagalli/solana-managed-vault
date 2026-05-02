@@ -3,6 +3,10 @@
 // for example: [VAULT_SEED, underlying_mint.key().as_ref()].
 pub const VAULT_SEED: &[u8] = b"vault";
 
+// PDA seed used to derive the SPL mint for vault shares.
+// The vault PDA should be the mint authority for this share mint.
+pub const SHARE_MINT_SEED: &[u8] = b"share_mint";
+
 // PDA seed used to derive each withdrawal ticket account.
 // A ticket should also include the vault, the user and a monotonic ticket index
 // in its seeds so every request has a deterministic, unique address.

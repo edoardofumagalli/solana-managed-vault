@@ -2,20 +2,18 @@ use anchor_lang::prelude::*;
 
 pub mod constants;
 pub mod errors;
-pub mod state;
+pub mod instructions;
 pub mod math;
+pub mod state;
+
+use instructions::*;
 
 declare_id!("AZjFTHJFBduuqPf1Gtado4r59rJ8zYqSNFPhiYFDUDzr");
 
 #[program]
 pub mod anchor_managed_vault {
     use super::*;
-
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        msg!("Greetings from: {:?}", ctx.program_id);
-        Ok(())
+    pub fn initialize_vault(ctx: Context<InitializeVault>, max_float_bps: u16) -> Result<()> {
+        instructions::initialize_vault::handler(ctx, max_float_bps)
     }
 }
-
-#[derive(Accounts)]
-pub struct Initialize {}
