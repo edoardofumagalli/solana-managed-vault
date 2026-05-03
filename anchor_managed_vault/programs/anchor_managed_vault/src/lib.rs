@@ -24,4 +24,8 @@ pub mod anchor_managed_vault {
     pub fn request_withdraw(ctx: Context<RequestWithdraw>, shares_amount: u64) -> Result<()> {
         instructions::request_withdraw::handler(ctx, shares_amount)
     }
+
+    pub fn cancel_withdraw(ctx: Context<CancelWithdraw>) -> Result<()> {
+        instructions::cancel_withdraw::handler(ctx)
+    }
 }
