@@ -42,4 +42,7 @@ pub enum VaultError {
 
     #[msg("Pending manager does not match the expected account.")]
     InvalidPendingManager,
+
+    #[msg("User does not have enough shares.")]
+    InsufficientShares,
 }

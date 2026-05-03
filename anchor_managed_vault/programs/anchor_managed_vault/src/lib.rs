@@ -20,4 +20,8 @@ pub mod anchor_managed_vault {
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         instructions::deposit::handler(ctx, amount)
     }
+
+    pub fn request_withdraw(ctx: Context<RequestWithdraw>, shares_amount: u64) -> Result<()> {
+        instructions::request_withdraw::handler(ctx, shares_amount)
+    }
 }
