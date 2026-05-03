@@ -16,4 +16,8 @@ pub mod anchor_managed_vault {
     pub fn initialize_vault(ctx: Context<InitializeVault>, max_float_bps: u16) -> Result<()> {
         instructions::initialize_vault::handler(ctx, max_float_bps)
     }
+
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        instructions::deposit::handler(ctx, amount)
+    }
 }

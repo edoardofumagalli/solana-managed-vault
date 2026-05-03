@@ -1,9 +1,12 @@
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, Signer } from "@solana/web3.js";
 import {
+    createAssociatedTokenAccountIdempotent,
     createMint,
     getAccount,
     getMint,
+    mintTo,
     TOKEN_PROGRAM_ID,
+    transfer,
 } from "@solana/spl-token";
 import { connection, payer, wallet } from "./setup";
 
@@ -25,6 +28,66 @@ export async function createUnderlyingMint(
         null,
         decimals,
         undefined,
+        undefined,
+        TOKEN_PROGRAM_ID
+    );
+}
+
+// Creates or reuses the associated token account for a mint/owner pair.
+// Tests use this for the depositor underlying account and depositor share account.
+export async function createTokenAccount(
+    mint: PublicKey,
+    owner: PublicKey,
+    allowOwnerOffCurve = false
+): Promise<PublicKey> {
+    return createAssociatedTokenAccountIdempotent(
+        connection,
+        payer,
+        mint,
+        owner,
+        undefined,
+        TOKEN_PROGRAM_ID,
+        undefined,
+        allowOwnerOffCurve
+    );
+}
+
+// Mints test tokens into an existing token account.
+// This assumes createUnderlyingMint was used, so payer controls the mint authority.
+export async function mintTokens(
+    mint: PublicKey,
+    destination: PublicKey,
+    amount: number | bigint
+) {
+    return mintTo(
+        connection,
+        payer,
+        mint,
+        destination,
+        payer,
+        amount,
+        [],
+        undefined,
+        TOKEN_PROGRAM_ID
+    );
+}
+
+// Moves test tokens between token accounts owned by the provided signer.
+// Useful for donation/rounding scenarios where we need direct SPL transfers.
+export async function transferTokens(
+    source: PublicKey,
+    destination: PublicKey,
+    amount: number | bigint,
+    owner: Signer = payer
+) {
+    return transfer(
+        connection,
+        payer,
+        source,
+        destination,
+        owner,
+        amount,
+        [],
         undefined,
         TOKEN_PROGRAM_ID
     );
