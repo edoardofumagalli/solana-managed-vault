@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { assert } from "chai";
-import { SystemProgram } from "@solana/web3.js";
+import { PublicKey, SystemProgram } from "@solana/web3.js";
 import {
     ASSOCIATED_TOKEN_PROGRAM_ID,
     TOKEN_PROGRAM_ID,
@@ -25,7 +25,24 @@ import { assertPublicKeyEquals } from "./helpers/assertions";
 
 const MAX_PENDING_TICKETS_PER_USER = 8;
 
-async function setupVaultWithDeposit(depositAmount: number) {
+type VaultTestSetup = {
+    underlyingMint: PublicKey;
+    vault: PublicKey;
+    shareMint: PublicKey;
+    vaultTokenAccount: PublicKey;
+    userUnderlyingTokenAccount: PublicKey;
+    userShareTokenAccount: PublicKey;
+};
+
+type WithdrawAccounts = {
+    userPosition: PublicKey;
+    withdrawTicket: PublicKey;
+    escrowShareTokenAccount: PublicKey;
+};
+
+async function setupVaultWithDeposit(
+    depositAmount: number
+): Promise<VaultTestSetup> {
     const underlyingMint = await createUnderlyingMint();
 
     const [vault] = deriveVaultPda(underlyingMint);
@@ -82,7 +99,10 @@ async function setupVaultWithDeposit(depositAmount: number) {
     };
 }
 
-function deriveRequestWithdrawAccounts(vault, ticketIndex: number) {
+function deriveRequestWithdrawAccounts(
+    vault: PublicKey,
+    ticketIndex: number
+): WithdrawAccounts {
     const [userPosition] = deriveUserVaultPositionPda(vault, manager);
     const [withdrawTicket] = deriveWithdrawTicketPda(vault, manager, ticketIndex);
     const [escrowShareTokenAccount] = deriveEscrowShareTokenAccountPda(
@@ -96,7 +116,11 @@ function deriveRequestWithdrawAccounts(vault, ticketIndex: number) {
     };
 }
 
-async function requestWithdraw(setup, ticketIndex: number, sharesAmount: number) {
+async function requestWithdraw(
+    setup: VaultTestSetup,
+    ticketIndex: number,
+    sharesAmount: number
+): Promise<WithdrawAccounts> {
     const accounts = deriveRequestWithdrawAccounts(setup.vault, ticketIndex);
 
     await program.methods
