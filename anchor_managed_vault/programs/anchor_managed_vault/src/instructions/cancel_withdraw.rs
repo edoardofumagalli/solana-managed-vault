@@ -95,17 +95,15 @@ impl<'info> CancelWithdraw<'info> {
     }
 
     fn close_escrow_share_token_account(&self, signer_seeds: &[&[&[u8]]]) -> Result<()> {
-        token_interface::close_account(
-            CpiContext::new_with_signer(
-                self.token_program.to_account_info(),
-                CloseAccount {
-                    account: self.escrow_share_token_account.to_account_info(),
-                    destination: self.user.to_account_info(),
-                    authority: self.withdraw_ticket.to_account_info(),
-                },
-                signer_seeds,
-            )
-        )
+        token_interface::close_account(CpiContext::new_with_signer(
+            self.token_program.to_account_info(),
+            CloseAccount {
+                account: self.escrow_share_token_account.to_account_info(),
+                destination: self.user.to_account_info(),
+                authority: self.withdraw_ticket.to_account_info(),
+            },
+            signer_seeds,
+        ))
     }
 }
 
@@ -116,7 +114,7 @@ pub fn handler(ctx: Context<CancelWithdraw>) -> Result<()> {
         VaultError::TicketOutOfOrder
     );
 
-    let ticket_shares = ctx.accounts.withdraw_ticket.shares;
+    let escrow_shares = ctx.accounts.escrow_share_token_account.amount;
 
     let vault_key = ctx.accounts.vault.key();
     let user_key = ctx.accounts.user.key();
@@ -131,7 +129,7 @@ pub fn handler(ctx: Context<CancelWithdraw>) -> Result<()> {
     ]];
 
     ctx.accounts
-        .transfer_shares_to_user(ticket_shares, signer_seeds)?;
+        .transfer_shares_to_user(escrow_shares, signer_seeds)?;
 
     ctx.accounts
         .close_escrow_share_token_account(signer_seeds)?;
