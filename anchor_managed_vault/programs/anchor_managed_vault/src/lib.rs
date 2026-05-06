@@ -36,4 +36,8 @@ pub mod anchor_managed_vault {
     pub fn manager_withdraw(ctx: Context<ManagerWithdraw>, amount: u64) -> Result<()> {
         instructions::manager_withdraw::handler(ctx, amount)
     }
+
+    pub fn manager_deposit(ctx: Context<ManagerDeposit>, amount: u64) -> Result<()> {
+        instructions::manager_deposit::handler(ctx, amount)
+    }
 }
