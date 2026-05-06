@@ -32,4 +32,8 @@ pub mod anchor_managed_vault {
     pub fn process_withdraw(ctx: Context<ProcessWithdraw>) -> Result<()> {
         instructions::process_withdraw::handler(ctx)
     }
+
+    pub fn manager_withdraw(ctx: Context<ManagerWithdraw>, amount: u64) -> Result<()> {
+        instructions::manager_withdraw::handler(ctx, amount)
+    }
 }
