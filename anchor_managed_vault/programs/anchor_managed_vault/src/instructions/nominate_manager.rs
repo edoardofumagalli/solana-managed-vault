@@ -1,6 +1,11 @@
 use anchor_lang::prelude::*;
 
-use crate::{constants::VAULT_SEED, errors::VaultError, state::Vault};
+use crate::{
+    constants::VAULT_SEED,
+    errors::VaultError,
+    events::ManagerNominatedEvent,
+    state::Vault,
+};
 
 #[derive(Accounts)]
 pub struct NominateManager<'info> {
@@ -18,7 +23,14 @@ pub struct NominateManager<'info> {
 pub fn handler(ctx: Context<NominateManager>, new_manager: Pubkey) -> Result<()> {
     require_keys_neq!(new_manager, Pubkey::default(), VaultError::InvalidManager);
 
+    let current_manager = ctx.accounts.vault.manager;
     ctx.accounts.vault.pending_manager = new_manager;
+
+    emit!(ManagerNominatedEvent {
+        vault: ctx.accounts.vault.key(),
+        current_manager,
+        pending_manager: new_manager,
+    });
 
     Ok(())
 }

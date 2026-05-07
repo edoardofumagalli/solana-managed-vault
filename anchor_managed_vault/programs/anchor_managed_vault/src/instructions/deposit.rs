@@ -6,6 +6,8 @@ use anchor_spl::token_interface::{
 
 use crate::{
     constants::VAULT_SEED,
+    errors::VaultError,
+    events::DepositEvent,
     math::{assets_to_shares_down, total_assets},
     state::Vault,
 };
@@ -104,6 +106,12 @@ pub fn handler(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     let total_shares_before = ctx.accounts.share_mint.supply;
 
     let shares_out = assets_to_shares_down(amount, total_assets_before, total_shares_before)?;
+    let total_assets_after = total_assets_before
+        .checked_add(amount)
+        .ok_or_else(|| error!(VaultError::MathOverflow))?;
+    let total_shares_after = total_shares_before
+        .checked_add(shares_out)
+        .ok_or_else(|| error!(VaultError::MathOverflow))?;
 
     ctx.accounts.transfer_underlying_to_vault(amount)?;
 
@@ -114,6 +122,16 @@ pub fn handler(ctx: Context<Deposit>, amount: u64) -> Result<()> {
 
     ctx.accounts
         .mint_shares_to_depositor(shares_out, signer_seeds)?;
+
+    emit!(DepositEvent {
+        vault: ctx.accounts.vault.key(),
+        depositor: ctx.accounts.depositor.key(),
+        assets_in: amount,
+        shares_out,
+        total_assets_after,
+        total_shares_after,
+        float_outstanding: ctx.accounts.vault.float_outstanding,
+    });
 
     Ok(())
 }

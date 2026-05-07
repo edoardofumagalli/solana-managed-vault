@@ -2,7 +2,13 @@ use anchor_lang::prelude::*;
 
 use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 
-use crate::{constants::VAULT_SEED, errors::VaultError, state::Vault};
+use crate::{
+    constants::VAULT_SEED,
+    errors::VaultError,
+    events::ManagerDepositEvent,
+    math::total_assets,
+    state::Vault,
+};
 
 #[derive(Accounts)]
 pub struct ManagerDeposit<'info> {
@@ -62,17 +68,35 @@ impl<'info> ManagerDeposit<'info> {
 pub fn handler(ctx: Context<ManagerDeposit>, amount: u64) -> Result<()> {
     require!(amount > 0, VaultError::InvalidAmount);
 
+    let vault_balance = ctx.accounts.vault_token_account.amount;
     let float_outstanding = ctx.accounts.vault.float_outstanding;
 
     let returned_float = amount.min(float_outstanding);
+    let excess_amount = amount
+        .checked_sub(returned_float)
+        .ok_or_else(|| error!(VaultError::MathOverflow))?;
 
     let new_float_outstanding = float_outstanding
         .checked_sub(returned_float)
         .ok_or_else(|| error!(VaultError::MathOverflow))?;
+    let vault_balance_after = vault_balance
+        .checked_add(amount)
+        .ok_or_else(|| error!(VaultError::MathOverflow))?;
+    let total_assets_after = total_assets(vault_balance_after, new_float_outstanding)?;
 
     ctx.accounts.transfer_assets_to_vault(amount)?;
 
     ctx.accounts.vault.float_outstanding = new_float_outstanding;
+
+    emit!(ManagerDepositEvent {
+        vault: ctx.accounts.vault.key(),
+        caller: ctx.accounts.caller.key(),
+        assets_in: amount,
+        returned_float,
+        excess_amount,
+        float_outstanding: new_float_outstanding,
+        total_assets: total_assets_after,
+    });
 
     Ok(())
 }

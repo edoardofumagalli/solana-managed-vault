@@ -7,6 +7,7 @@ use anchor_spl::token_interface::{
 use crate::{
     constants::{ESCROW_SHARE_SEED, USER_VAULT_POSITION_SEED, VAULT_SEED, WITHDRAW_TICKET_SEED},
     errors::VaultError,
+    events::WithdrawProcessedEvent,
     math::{shares_to_assets_down, total_assets},
     state::{UserVaultPosition, Vault, WithdrawTicket},
 };
@@ -146,6 +147,8 @@ pub fn handler(ctx: Context<ProcessWithdraw>) -> Result<()> {
         VaultError::InsufficientShares
     );
 
+    let escrow_shares = ctx.accounts.escrow_share_token_account.amount;
+
     let total_assets_now = total_assets(
         ctx.accounts.vault_token_account.amount,
         ctx.accounts.vault.float_outstanding,
@@ -161,6 +164,16 @@ pub fn handler(ctx: Context<ProcessWithdraw>) -> Result<()> {
         ctx.accounts.vault_token_account.amount >= assets_out,
         VaultError::InsufficientLiquidity
     );
+
+    let total_assets_after = total_assets_now
+        .checked_sub(assets_out)
+        .ok_or_else(|| error!(VaultError::MathOverflow))?;
+    let total_shares_after = ctx
+        .accounts
+        .share_mint
+        .supply
+        .checked_sub(escrow_shares)
+        .ok_or_else(|| error!(VaultError::MathOverflow))?;
 
     let next_pending_ticket_count = ctx
         .accounts
@@ -184,7 +197,10 @@ pub fn handler(ctx: Context<ProcessWithdraw>) -> Result<()> {
 
     let vault_key = ctx.accounts.vault.key();
     let user_key = ctx.accounts.user.key();
-    let ticket_index_bytes = ctx.accounts.withdraw_ticket.ticket_index.to_le_bytes();
+    let ticket_key = ctx.accounts.withdraw_ticket.key();
+    let escrow_key = ctx.accounts.escrow_share_token_account.key();
+    let ticket_index = ctx.accounts.withdraw_ticket.ticket_index;
+    let ticket_index_bytes = ticket_index.to_le_bytes();
     let ticket_bump = [ctx.accounts.withdraw_ticket.bump];
 
     let ticket_signer_seeds: &[&[&[u8]]] = &[&[
@@ -198,16 +214,28 @@ pub fn handler(ctx: Context<ProcessWithdraw>) -> Result<()> {
     ctx.accounts
         .transfer_assets_to_user(assets_out, vault_signer_seeds)?;
 
-    ctx.accounts.burn_escrowed_shares(
-        ctx.accounts.escrow_share_token_account.amount,
-        ticket_signer_seeds,
-    )?;
+    ctx.accounts
+        .burn_escrowed_shares(escrow_shares, ticket_signer_seeds)?;
 
     ctx.accounts
         .close_escrow_share_token_account(ticket_signer_seeds)?;
 
     ctx.accounts.user_position.pending_ticket_count = next_pending_ticket_count;
     ctx.accounts.vault.next_ticket_to_process = next_ticket_to_process;
+
+    emit!(WithdrawProcessedEvent {
+        vault: vault_key,
+        user: user_key,
+        ticket: ticket_key,
+        escrow_share_token_account: escrow_key,
+        ticket_index,
+        shares_burned: escrow_shares,
+        assets_out,
+        total_assets_after,
+        total_shares_after,
+        next_ticket_to_process,
+        pending_ticket_count: next_pending_ticket_count,
+    });
 
     Ok(())
 }

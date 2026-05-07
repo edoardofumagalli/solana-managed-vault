@@ -8,6 +8,7 @@ use crate::{
         WITHDRAW_TICKET_SEED,
     },
     errors::VaultError,
+    events::WithdrawRequestedEvent,
     math::{shares_to_assets_down, total_assets},
     state::{UserVaultPosition, Vault, WithdrawTicket},
 };
@@ -164,6 +165,17 @@ pub fn handler(ctx: Context<RequestWithdraw>, shares_amount: u64) -> Result<()> 
         .total_tickets
         .checked_add(1)
         .ok_or_else(|| error!(VaultError::MathOverflow))?;
+
+    emit!(WithdrawRequestedEvent {
+        vault: vault_key,
+        user: user_key,
+        ticket: ctx.accounts.withdraw_ticket.key(),
+        escrow_share_token_account: escrow_key,
+        ticket_index,
+        shares: shares_amount,
+        requested_slot,
+        pending_ticket_count: ctx.accounts.user_position.pending_ticket_count,
+    });
 
     Ok(())
 }

@@ -8,6 +8,7 @@ use anchor_spl::{
 use crate::{
     constants::{MAX_FLOAT_BPS, SHARE_MINT_SEED, VAULT_SEED},
     errors::VaultError,
+    events::VaultInitializedEvent,
     state::Vault,
 };
 
@@ -86,6 +87,15 @@ pub fn handler(ctx: Context<InitializeVault>, max_float_bps: u16) -> Result<()> 
     vault.total_tickets = 0;
     vault.next_ticket_to_process = 0;
     vault.bump = ctx.bumps.vault;
+
+    emit!(VaultInitializedEvent {
+        vault: vault.key(),
+        manager: vault.manager,
+        underlying_mint: vault.underlying_mint,
+        share_mint: vault.share_mint,
+        vault_token_account: vault.vault_token_account,
+        max_float_bps: vault.max_float_bps,
+    });
 
     Ok(())
 }

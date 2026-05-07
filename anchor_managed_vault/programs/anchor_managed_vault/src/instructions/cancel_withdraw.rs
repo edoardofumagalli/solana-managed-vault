@@ -7,6 +7,7 @@ use anchor_spl::token_interface::{
 use crate::{
     constants::{ESCROW_SHARE_SEED, USER_VAULT_POSITION_SEED, VAULT_SEED, WITHDRAW_TICKET_SEED},
     errors::VaultError,
+    events::WithdrawCancelledEvent,
     state::{UserVaultPosition, Vault, WithdrawTicket},
 };
 
@@ -115,6 +116,9 @@ pub fn handler(ctx: Context<CancelWithdraw>) -> Result<()> {
     );
 
     let escrow_shares = ctx.accounts.escrow_share_token_account.amount;
+    let ticket_key = ctx.accounts.withdraw_ticket.key();
+    let escrow_key = ctx.accounts.escrow_share_token_account.key();
+    let ticket_index = ctx.accounts.withdraw_ticket.ticket_index;
 
     let vault_key = ctx.accounts.vault.key();
     let user_key = ctx.accounts.user.key();
@@ -147,6 +151,17 @@ pub fn handler(ctx: Context<CancelWithdraw>) -> Result<()> {
         .next_ticket_to_process
         .checked_add(1)
         .ok_or_else(|| error!(VaultError::MathOverflow))?;
+
+    emit!(WithdrawCancelledEvent {
+        vault: vault_key,
+        user: user_key,
+        ticket: ticket_key,
+        escrow_share_token_account: escrow_key,
+        ticket_index,
+        shares_returned: escrow_shares,
+        next_ticket_to_process: ctx.accounts.vault.next_ticket_to_process,
+        pending_ticket_count: ctx.accounts.user_position.pending_ticket_count,
+    });
 
     Ok(())
 }

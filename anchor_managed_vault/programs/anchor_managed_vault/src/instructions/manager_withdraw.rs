@@ -5,6 +5,7 @@ use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, Tran
 use crate::{
     constants::VAULT_SEED,
     errors::VaultError,
+    events::ManagerWithdrawEvent,
     math::{checked_float_cap, total_assets},
     state::Vault,
 };
@@ -92,6 +93,15 @@ pub fn handler(ctx: Context<ManagerWithdraw>, amount: u64) -> Result<()> {
         .transfer_assets_to_receiver(amount, signer_seeds)?;
 
     ctx.accounts.vault.float_outstanding = post_float_outstanding;
+
+    emit!(ManagerWithdrawEvent {
+        vault: ctx.accounts.vault.key(),
+        manager: ctx.accounts.manager.key(),
+        receiver_underlying_token_account: ctx.accounts.receiver_underlying_token_account.key(),
+        assets_out: amount,
+        float_outstanding: post_float_outstanding,
+        total_assets: total_assets_now,
+    });
 
     Ok(())
 }
