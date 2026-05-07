@@ -43,6 +43,9 @@ pub enum VaultError {
     #[msg("Pending manager does not match the expected account.")]
     InvalidPendingManager,
 
+    #[msg("Manager cannot be the default public key.")]
+    InvalidManager,
+
     #[msg("User does not have enough shares.")]
     InsufficientShares,
 }

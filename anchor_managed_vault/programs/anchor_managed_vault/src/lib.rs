@@ -40,4 +40,12 @@ pub mod anchor_managed_vault {
     pub fn manager_deposit(ctx: Context<ManagerDeposit>, amount: u64) -> Result<()> {
         instructions::manager_deposit::handler(ctx, amount)
     }
+
+    pub fn nominate_manager(ctx: Context<NominateManager>, new_manager: Pubkey) -> Result<()> {
+        instructions::nominate_manager::handler(ctx, new_manager)
+    }
+
+    pub fn accept_manager(ctx: Context<AcceptManager>) -> Result<()> {
+        instructions::accept_manager::handler(ctx)
+    }
 }
