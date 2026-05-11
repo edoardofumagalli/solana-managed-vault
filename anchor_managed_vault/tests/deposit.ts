@@ -6,7 +6,8 @@ import {
     TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 
-import { DEFAULT_MAX_FLOAT_BPS, manager, program } from "./helpers/setup";
+import { DEFAULT_MAX_FLOAT_BPS,
+    DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS, manager, program } from "./helpers/setup";
 import {
     deriveShareMintPda,
     deriveVaultPda,
@@ -32,7 +33,7 @@ describe("deposit", () => {
         const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
         await program.methods
-            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager)
+            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
             .accountsPartial({
                 manager,
                 underlyingMint,
@@ -97,7 +98,7 @@ describe("deposit", () => {
         const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
         await program.methods
-            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager)
+            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
             .accountsPartial({
                 manager,
                 underlyingMint,
@@ -154,7 +155,7 @@ describe("deposit", () => {
         const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
         await program.methods
-            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager)
+            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
             .accountsPartial({
                 manager,
                 underlyingMint,
@@ -275,7 +276,7 @@ describe("deposit", () => {
         const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
         await program.methods
-            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager)
+            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
             .accountsPartial({
                 manager,
                 underlyingMint,
@@ -366,7 +367,7 @@ describe("deposit", () => {
         const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
         await program.methods
-            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager)
+            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
             .accountsPartial({
                 manager,
                 underlyingMint,

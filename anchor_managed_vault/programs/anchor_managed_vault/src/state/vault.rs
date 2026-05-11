@@ -11,9 +11,11 @@ pub struct Vault {
     pub vault_token_account: Pubkey,
     pub float_outstanding: u64,
     pub max_float_bps: u16, // basis points
+    pub manager_withdraw_delay_slots: u64,
     pub is_shutdown: bool,
     pub shutdown_slot: u64,
     pub total_tickets: u64,
     pub next_ticket_to_process: u64,
+    pub next_manager_withdraw_request_id: u64,
     pub bump: u8,
 }

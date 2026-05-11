@@ -20,6 +20,15 @@ pub enum VaultError {
     ZeroAssets,
 
     // Manager float rules.
+    #[msg("Manager withdrawal delay exceeds the allowed maximum.")]
+    InvalidManagerWithdrawDelay,
+
+    #[msg("Manager withdrawal request timelock has not elapsed yet.")]
+    ManagerWithdrawTimelockNotElapsed,
+
+    #[msg("Manager withdrawal request does not match the expected accounts.")]
+    InvalidManagerWithdrawRequest,
+
     #[msg("Manager float cap exceeded.")]
     FloatCapExceeded,
 

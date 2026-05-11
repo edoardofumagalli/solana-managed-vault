@@ -20,6 +20,10 @@ pub const USER_VAULT_POSITION_SEED: &[u8] = b"user_vault_position";
 // request is pending. The exact account layout will be defined in request_withdraw.
 pub const ESCROW_SHARE_SEED: &[u8] = b"escrow_share";
 
+// PDA seed used to derive pending manager withdrawal requests.
+// The derivation should also include the vault and a monotonic request id.
+pub const MANAGER_WITHDRAW_REQUEST_SEED: &[u8] = b"manager_withdraw_request";
+
 // Basis points denominator: 10_000 bps = 100%.
 // Example: 2_500 bps means 25%.
 pub const BPS_DENOMINATOR: u64 = 10_000;
@@ -27,6 +31,10 @@ pub const BPS_DENOMINATOR: u64 = 10_000;
 // Upper bound for max_float_bps. This prevents configuring a manager float cap
 // greater than the vault's total assets.
 pub const MAX_FLOAT_BPS: u16 = 10_000;
+
+// Upper bound for the manager withdrawal timelock delay.
+// This is a guardrail against accidentally configuring an unreachable delay.
+pub const MAX_MANAGER_WITHDRAW_DELAY_SLOTS: u64 = 432_000;
 
 // Virtual offset used by the ERC-4626-style conversion math.
 // Keeping virtual assets and virtual shares equal preserves an initial 1:1 price

@@ -7,7 +7,9 @@ import {
 
 import {
     DEFAULT_MAX_FLOAT_BPS,
+    DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS,
     INVALID_MAX_FLOAT_BPS,
+    INVALID_MANAGER_WITHDRAW_DELAY_SLOTS,
     manager,
     program,
 } from "./helpers/setup";
@@ -34,7 +36,7 @@ describe("initialize_vault", () => {
         const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
         await program.methods
-            .initializeVault(DEFAULT_MAX_FLOAT_BPS, emergencyAdmin)
+            .initializeVault(DEFAULT_MAX_FLOAT_BPS, emergencyAdmin, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
             .accountsPartial({
                 manager,
                 underlyingMint,
@@ -78,10 +80,15 @@ describe("initialize_vault", () => {
 
         assert.equal(vaultState.floatOutstanding.toNumber(), 0);
         assert.equal(vaultState.maxFloatBps, DEFAULT_MAX_FLOAT_BPS);
+        assert.equal(
+            vaultState.managerWithdrawDelaySlots.toNumber(),
+            DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS.toNumber()
+        );
         assert.equal(vaultState.isShutdown, false);
         assert.equal(vaultState.shutdownSlot.toNumber(), 0);
         assert.equal(vaultState.totalTickets.toNumber(), 0);
         assert.equal(vaultState.nextTicketToProcess.toNumber(), 0);
+        assert.equal(vaultState.nextManagerWithdrawRequestId.toNumber(), 0);
         assert.equal(vaultState.bump, vaultBump);
 
         const shareMintAccount = await fetchMint(shareMint);
@@ -118,7 +125,7 @@ describe("initialize_vault", () => {
 
         try {
             await program.methods
-                .initializeVault(INVALID_MAX_FLOAT_BPS, manager)
+                .initializeVault(INVALID_MAX_FLOAT_BPS, manager, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
                 .accountsPartial({
                     manager,
                     underlyingMint,
@@ -146,7 +153,7 @@ describe("initialize_vault", () => {
 
         try {
             await program.methods
-                .initializeVault(DEFAULT_MAX_FLOAT_BPS, PublicKey.default)
+                .initializeVault(DEFAULT_MAX_FLOAT_BPS, PublicKey.default, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
                 .accountsPartial({
                     manager,
                     underlyingMint,
@@ -162,6 +169,37 @@ describe("initialize_vault", () => {
             assert.fail("Expected initializeVault to reject invalid emergency admin");
         } catch (error) {
             assert.include(String(error), "InvalidEmergencyAdmin");
+        }
+    });
+    it("rejects manager withdraw delay above the allowed maximum", async () => {
+        const underlyingMint = await createUnderlyingMint();
+
+        const [vault] = deriveVaultPda(underlyingMint);
+        const [shareMint] = deriveShareMintPda(vault);
+        const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
+
+        try {
+            await program.methods
+                .initializeVault(
+                    DEFAULT_MAX_FLOAT_BPS,
+                    manager,
+                    INVALID_MANAGER_WITHDRAW_DELAY_SLOTS
+                )
+                .accountsPartial({
+                    manager,
+                    underlyingMint,
+                    vault,
+                    shareMint,
+                    vaultTokenAccount,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                    systemProgram: SystemProgram.programId,
+                    associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+                })
+                .rpc();
+
+            assert.fail("Expected initializeVault to reject invalid manager withdraw delay");
+        } catch (error) {
+            assert.include(String(error), "InvalidManagerWithdrawDelay");
         }
     });
 });
