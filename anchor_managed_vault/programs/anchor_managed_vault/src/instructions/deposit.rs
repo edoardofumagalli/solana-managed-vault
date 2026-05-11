@@ -98,6 +98,8 @@ impl<'info> Deposit<'info> {
 }
 
 pub fn handler(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+    require!(!ctx.accounts.vault.is_shutdown, VaultError::VaultShutdown);
+
     let total_assets_before = total_assets(
         ctx.accounts.vault_token_account.amount,
         ctx.accounts.vault.float_outstanding,

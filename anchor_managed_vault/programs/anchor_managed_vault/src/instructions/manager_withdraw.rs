@@ -68,6 +68,7 @@ impl<'info> ManagerWithdraw<'info> {
 
 pub fn handler(ctx: Context<ManagerWithdraw>, amount: u64) -> Result<()> {
     require!(amount > 0, VaultError::InvalidAmount);
+    require!(!ctx.accounts.vault.is_shutdown, VaultError::VaultShutdown);
 
     let vault_balance = ctx.accounts.vault_token_account.amount;
     let float_outstanding = ctx.accounts.vault.float_outstanding;

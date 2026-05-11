@@ -55,7 +55,7 @@ async function setupVaultWithDeposit(
     const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
     await program.methods
-        .initializeVault(maxFloatBps)
+        .initializeVault(maxFloatBps, manager)
         .accountsPartial({
             manager,
             underlyingMint,

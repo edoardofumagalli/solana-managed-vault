@@ -1,5 +1,5 @@
 import { assert } from "chai";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import {
     ASSOCIATED_TOKEN_PROGRAM_ID,
     TOKEN_PROGRAM_ID,
@@ -27,13 +27,14 @@ import { assertPublicKeyEquals } from "./helpers/assertions";
 describe("initialize_vault", () => {
     it("initializes vault state, share mint, and vault token account", async () => {
         const underlyingMint = await createUnderlyingMint();
+        const emergencyAdmin = Keypair.generate().publicKey;
 
         const [vault, vaultBump] = deriveVaultPda(underlyingMint);
         const [shareMint] = deriveShareMintPda(vault);
         const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
         await program.methods
-            .initializeVault(DEFAULT_MAX_FLOAT_BPS)
+            .initializeVault(DEFAULT_MAX_FLOAT_BPS, emergencyAdmin)
             .accountsPartial({
                 manager,
                 underlyingMint,
@@ -55,6 +56,11 @@ describe("initialize_vault", () => {
             "pending manager mismatch"
         );
         assertPublicKeyEquals(
+            vaultState.emergencyAdmin,
+            emergencyAdmin,
+            "emergency admin mismatch"
+        );
+        assertPublicKeyEquals(
             vaultState.underlyingMint,
             underlyingMint,
             "underlying mint mismatch"
@@ -72,6 +78,8 @@ describe("initialize_vault", () => {
 
         assert.equal(vaultState.floatOutstanding.toNumber(), 0);
         assert.equal(vaultState.maxFloatBps, DEFAULT_MAX_FLOAT_BPS);
+        assert.equal(vaultState.isShutdown, false);
+        assert.equal(vaultState.shutdownSlot.toNumber(), 0);
         assert.equal(vaultState.totalTickets.toNumber(), 0);
         assert.equal(vaultState.nextTicketToProcess.toNumber(), 0);
         assert.equal(vaultState.bump, vaultBump);
@@ -110,7 +118,7 @@ describe("initialize_vault", () => {
 
         try {
             await program.methods
-                .initializeVault(INVALID_MAX_FLOAT_BPS)
+                .initializeVault(INVALID_MAX_FLOAT_BPS, manager)
                 .accountsPartial({
                     manager,
                     underlyingMint,
@@ -126,6 +134,34 @@ describe("initialize_vault", () => {
             assert.fail("Expected initializeVault to reject invalid max_float_bps");
         } catch (error) {
             assert.include(String(error), "InvalidMaxFloatBps");
+        }
+    });
+
+    it("rejects the default public key as emergency admin", async () => {
+        const underlyingMint = await createUnderlyingMint();
+
+        const [vault] = deriveVaultPda(underlyingMint);
+        const [shareMint] = deriveShareMintPda(vault);
+        const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
+
+        try {
+            await program.methods
+                .initializeVault(DEFAULT_MAX_FLOAT_BPS, PublicKey.default)
+                .accountsPartial({
+                    manager,
+                    underlyingMint,
+                    vault,
+                    shareMint,
+                    vaultTokenAccount,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                    systemProgram: SystemProgram.programId,
+                    associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+                })
+                .rpc();
+
+            assert.fail("Expected initializeVault to reject invalid emergency admin");
+        } catch (error) {
+            assert.include(String(error), "InvalidEmergencyAdmin");
         }
     });
 });

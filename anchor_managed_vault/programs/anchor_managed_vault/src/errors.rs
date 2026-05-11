@@ -46,6 +46,19 @@ pub enum VaultError {
     #[msg("Manager cannot be the default public key.")]
     InvalidManager,
 
+    #[msg("Emergency admin cannot be the default public key.")]
+    InvalidEmergencyAdmin,
+
+    // Emergency shutdown rules.
+    #[msg("Only the configured emergency admin can perform this action.")]
+    UnauthorizedEmergencyAdmin,
+
+    #[msg("Vault emergency shutdown is already active.")]
+    ShutdownAlreadyActive,
+
+    #[msg("Vault is in emergency shutdown mode.")]
+    VaultShutdown,
+
     #[msg("User does not have enough shares.")]
     InsufficientShares,
 }

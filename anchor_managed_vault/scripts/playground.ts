@@ -183,7 +183,7 @@ async function main(): Promise<void> {
 
     console.log("\nInitializing vault...");
     const initializeSignature = await program.methods
-        .initializeVault(DEFAULT_MAX_FLOAT_BPS)
+        .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager)
         .accountsPartial({
             manager,
             underlyingMint,
