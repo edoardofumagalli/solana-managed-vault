@@ -6,7 +6,7 @@ use anchor_spl::{
 };
 
 use crate::{
-    constants::{MAX_FLOAT_BPS, SHARE_MINT_SEED, VAULT_SEED},
+    constants::{MAX_FLOAT_BPS, MAX_MANAGER_WITHDRAW_DELAY_SLOTS, SHARE_MINT_SEED, VAULT_SEED},
     errors::VaultError,
     events::VaultInitializedEvent,
     state::Vault,
@@ -72,6 +72,7 @@ pub fn handler(
     ctx: Context<InitializeVault>,
     max_float_bps: u16,
     emergency_admin: Pubkey,
+    manager_withdraw_delay_slots: u64,
 ) -> Result<()> {
     require!(
         max_float_bps <= MAX_FLOAT_BPS,
@@ -82,32 +83,44 @@ pub fn handler(
         Pubkey::default(),
         VaultError::InvalidEmergencyAdmin
     );
+    require!(
+        manager_withdraw_delay_slots <= MAX_MANAGER_WITHDRAW_DELAY_SLOTS,
+        VaultError::InvalidManagerWithdrawDelay
+    );
 
-    let vault = &mut ctx.accounts.vault;
+    let manager = ctx.accounts.manager.key();
+    let underlying_mint = ctx.accounts.underlying_mint.key();
+    let share_mint = ctx.accounts.share_mint.key();
+    let vault_token_account = ctx.accounts.vault_token_account.key();
 
-    vault.manager = ctx.accounts.manager.key();
-    // No manager transfer is pending at initialization; default Pubkey is our sentinel.
-    vault.pending_manager = Pubkey::default();
-    vault.emergency_admin = emergency_admin;
-    vault.underlying_mint = ctx.accounts.underlying_mint.key();
-    vault.share_mint = ctx.accounts.share_mint.key();
-    vault.vault_token_account = ctx.accounts.vault_token_account.key();
-    vault.float_outstanding = 0;
-    vault.max_float_bps = max_float_bps;
-    vault.is_shutdown = false;
-    vault.shutdown_slot = 0;
-    vault.total_tickets = 0;
-    vault.next_ticket_to_process = 0;
-    vault.bump = ctx.bumps.vault;
+    ctx.accounts.vault.set_inner(Vault {
+        manager,
+        // No manager transfer is pending at initialization; default Pubkey is our sentinel.
+        pending_manager: Pubkey::default(),
+        emergency_admin,
+        underlying_mint,
+        share_mint,
+        vault_token_account,
+        float_outstanding: 0,
+        max_float_bps,
+        manager_withdraw_delay_slots,
+        is_shutdown: false,
+        shutdown_slot: 0,
+        total_tickets: 0,
+        next_ticket_to_process: 0,
+        next_manager_withdraw_request_id: 0,
+        bump: ctx.bumps.vault,
+    });
 
     emit!(VaultInitializedEvent {
-        vault: vault.key(),
-        manager: vault.manager,
-        emergency_admin: vault.emergency_admin,
-        underlying_mint: vault.underlying_mint,
-        share_mint: vault.share_mint,
-        vault_token_account: vault.vault_token_account,
-        max_float_bps: vault.max_float_bps,
+        vault: ctx.accounts.vault.key(),
+        manager,
+        emergency_admin,
+        underlying_mint,
+        share_mint,
+        vault_token_account,
+        max_float_bps,
+        manager_withdraw_delay_slots,
     });
 
     Ok(())

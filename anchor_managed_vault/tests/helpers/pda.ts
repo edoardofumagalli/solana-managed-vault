@@ -13,6 +13,7 @@ const SHARE_MINT_SEED = Buffer.from("share_mint");
 const WITHDRAW_TICKET_SEED = Buffer.from("withdraw_ticket");
 const USER_VAULT_POSITION_SEED = Buffer.from("user_vault_position");
 const ESCROW_SHARE_SEED = Buffer.from("escrow_share");
+const MANAGER_WITHDRAW_REQUEST_SEED = Buffer.from("manager_withdraw_request");
 
 // Derives the main vault state PDA for a given underlying mint.
 // A PDA depends on both its seeds and the program id, so the same seeds under a
@@ -84,6 +85,25 @@ export function deriveWithdrawTicketPda(
             user.toBuffer(),
             ticketIndexSeed,
         ],
+        program.programId
+    );
+}
+
+// Derives a pending manager withdrawal request PDA for a specific request id.
+// Like ticket indexes, the request id is a Rust u64, so it must be encoded as
+// exactly 8 little-endian bytes on the client.
+export function deriveManagerWithdrawRequestPda(
+    vault: PublicKey,
+    requestId: number | anchor.BN
+): [PublicKey, number] {
+    const requestIdSeed = new anchor.BN(requestId).toArrayLike(
+        Buffer,
+        "le",
+        8
+    );
+
+    return PublicKey.findProgramAddressSync(
+        [MANAGER_WITHDRAW_REQUEST_SEED, vault.toBuffer(), requestIdSeed],
         program.programId
     );
 }

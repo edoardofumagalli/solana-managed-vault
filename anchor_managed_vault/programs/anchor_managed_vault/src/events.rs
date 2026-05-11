@@ -9,6 +9,7 @@ pub struct VaultInitializedEvent {
     pub share_mint: Pubkey,
     pub vault_token_account: Pubkey,
     pub max_float_bps: u16,
+    pub manager_withdraw_delay_slots: u64,
 }
 
 #[event]
@@ -70,11 +71,26 @@ pub struct WithdrawProcessedEvent {
 }
 
 #[event]
-pub struct ManagerWithdrawEvent {
+pub struct ManagerWithdrawRequestedEvent {
     pub vault: Pubkey,
     pub manager: Pubkey,
+    pub request: Pubkey,
+    pub request_id: u64,
     pub receiver_underlying_token_account: Pubkey,
-    pub assets_out: u64,
+    pub amount: u64,
+    pub requested_slot: u64,
+    pub executable_after_slot: u64,
+}
+
+#[event]
+pub struct ManagerWithdrawExecutedEvent {
+    pub vault: Pubkey,
+    pub manager: Pubkey,
+    pub executor: Pubkey,
+    pub request: Pubkey,
+    pub request_id: u64,
+    pub receiver_underlying_token_account: Pubkey,
+    pub amount: u64,
     pub float_outstanding: u64,
     pub total_assets: u64,
 }

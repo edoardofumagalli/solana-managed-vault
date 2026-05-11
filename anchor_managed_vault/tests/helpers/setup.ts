@@ -17,3 +17,5 @@ export const manager = wallet.publicKey;
 
 export const DEFAULT_MAX_FLOAT_BPS = 2_000;
 export const INVALID_MAX_FLOAT_BPS = 10_001;
+export const DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS = new anchor.BN(8);
+export const INVALID_MANAGER_WITHDRAW_DELAY_SLOTS = new anchor.BN(432_001);

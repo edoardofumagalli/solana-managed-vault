@@ -8,6 +8,7 @@ import {
 
 import {
     DEFAULT_MAX_FLOAT_BPS,
+    DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS,
     connection,
     manager,
     program,
@@ -53,7 +54,7 @@ async function setupVaultWithDeposit(
     const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
     await program.methods
-        .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager)
+        .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
         .accountsPartial({
             manager,
             underlyingMint,

@@ -99,7 +99,7 @@ Tests to add:
 
 Question: If withdrawals reduce TVL and `float_outstanding` becomes greater than `max_float_bps * total_assets`, what should the program do?
 
-Decision: Do not block user exits or deposits. If the vault becomes over the float cap, block any new `manager_withdraw` until the vault returns within the cap. Continue allowing `manager_deposit` so anyone can return capital and reduce `float_outstanding`.
+Decision: Do not block user exits or deposits. If the vault becomes over the float cap, block any new `request_manager_withdraw` until the vault returns within the cap. Continue allowing `manager_deposit` so anyone can return capital and reduce `float_outstanding`.
 
 Reasoning: The float cap is a constraint on new manager risk, not a reason to trap users. If existing withdrawals reduce `total_assets`, the same `float_outstanding` can become too large relative to the smaller vault. Blocking `process_withdraw` would punish users for a manager-side liquidity problem, so withdrawals should remain allowed whenever there is enough idle liquidity to satisfy the ticket.
 
@@ -109,21 +109,21 @@ Deposits should remain allowed because they increase `total_assets` and idle liq
 
 This creates a clear stress policy: existing over-cap float is tolerated as a temporary state, user-facing operations continue where possible, and manager risk-taking is frozen until compliance is restored.
 
-Implementation impact: `manager_withdraw` must enforce the cap using the post-withdraw values:
+Implementation impact: `request_manager_withdraw` and `execute_manager_withdraw` must enforce the cap using the post-withdraw values:
 
 ```text
 new_float_outstanding = float_outstanding + amount
 new_float_outstanding <= total_assets * max_float_bps / 10_000
 ```
 
-If `float_outstanding` is already above the cap, any positive `manager_withdraw` must fail. `deposit`, `request_withdraw`, `process_withdraw`, `cancel_withdraw`, and `manager_deposit` should not fail only because the vault is temporarily over cap. Events should make over-cap situations observable by including `float_outstanding`, `total_assets`, and `max_float_bps` after manager operations and withdrawals.
+If `float_outstanding` is already above the cap, any positive manager withdrawal request/execution must fail. `deposit`, `request_withdraw`, `process_withdraw`, `cancel_withdraw`, and `manager_deposit` should not fail only because the vault is temporarily over cap. Events should make over-cap situations observable by including `float_outstanding`, `total_assets`, and `max_float_bps` after manager operations and withdrawals.
 
 Tests to add:
 - Withdrawals reduce `total_assets` and make `float_outstanding` exceed the cap; the vault records the state without blocking the withdrawal.
-- Any new `manager_withdraw` fails while the vault is over cap.
+- Any new `request_manager_withdraw` fails while the vault is over cap.
 - User deposits remain allowed while the vault is over cap.
 - `manager_deposit` remains allowed while over cap and can bring `float_outstanding` back within the cap.
-- After enough capital is returned or deposited, `manager_withdraw` succeeds again only up to the cap.
+- After enough capital is returned or deposited, `request_manager_withdraw` / `execute_manager_withdraw` succeeds again only up to the cap.
 
 ## 6. Permissionless Return Validation
 

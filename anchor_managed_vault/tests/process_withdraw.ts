@@ -8,12 +8,14 @@ import {
 
 import {
     DEFAULT_MAX_FLOAT_BPS,
+    DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS,
     connection,
     manager,
     program,
 } from "./helpers/setup";
 import {
     deriveEscrowShareTokenAccountPda,
+    deriveManagerWithdrawRequestPda,
     deriveShareMintPda,
     deriveUserVaultPositionPda,
     deriveVaultPda,
@@ -55,7 +57,7 @@ async function setupVaultWithDeposit(
     const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
     await program.methods
-        .initializeVault(maxFloatBps, manager)
+        .initializeVault(maxFloatBps, manager, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
         .accountsPartial({
             manager,
             underlyingMint,
@@ -169,22 +171,72 @@ async function processWithdraw(
         .rpc();
 }
 
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitUntilSlot(targetSlot: anchor.BN): Promise<void> {
+    while (new anchor.BN(await connection.getSlot()).lt(targetSlot)) {
+        await sleep(250);
+    }
+}
+
 async function managerWithdraw(
     setup: VaultTestSetup,
     amount: number,
-    receiverUnderlyingTokenAccount: PublicKey
+    receiverUnderlyingTokenAccount: PublicKey,
+    signer: Keypair | null = null,
+    managerAccount: PublicKey = manager
 ): Promise<void> {
-    await program.methods
-        .managerWithdraw(new anchor.BN(amount))
+    const vaultState = await program.account.vault.fetch(setup.vault);
+    const [managerWithdrawRequest] = deriveManagerWithdrawRequestPda(
+        setup.vault,
+        vaultState.nextManagerWithdrawRequestId
+    );
+
+    const requestBuilder = program.methods
+        .requestManagerWithdraw(new anchor.BN(amount))
         .accountsPartial({
-            manager,
+            manager: managerAccount,
             vault: setup.vault,
             underlyingMint: setup.underlyingMint,
             vaultTokenAccount: setup.vaultTokenAccount,
             receiverUnderlyingTokenAccount,
+            managerWithdrawRequest,
             tokenProgram: TOKEN_PROGRAM_ID,
-        })
-        .rpc();
+            systemProgram: SystemProgram.programId,
+        });
+
+    if (signer) {
+        await requestBuilder.signers([signer]).rpc();
+    } else {
+        await requestBuilder.rpc();
+    }
+
+    const requestState = await program.account.managerWithdrawRequest.fetch(
+        managerWithdrawRequest
+    );
+    await waitUntilSlot(requestState.executableAfterSlot);
+
+    const executeBuilder = program.methods
+        .executeManagerWithdraw()
+        .accountsPartial({
+            executor: managerAccount,
+            vault: setup.vault,
+            underlyingMint: setup.underlyingMint,
+            vaultTokenAccount: setup.vaultTokenAccount,
+            receiverUnderlyingTokenAccount,
+            managerWithdrawRequest,
+            tokenProgram: TOKEN_PROGRAM_ID,
+        });
+
+    if (signer) {
+        await executeBuilder.signers([signer]).rpc();
+        return;
+    }
+
+    await executeBuilder.rpc();
 }
 
 async function managerDeposit(
@@ -615,7 +667,7 @@ describe("process_withdraw", () => {
                 managerReceiverTokenAccount
             );
 
-            assert.fail("Expected manager_withdraw to fail while vault is over cap");
+            assert.fail("Expected request_manager_withdraw to fail while vault is over cap");
         } catch (error) {
             assert.include(String(error), "FloatCapExceeded");
         }

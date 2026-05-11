@@ -3,22 +3,22 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 
 use crate::{
-    constants::VAULT_SEED,
+    constants::{MANAGER_WITHDRAW_REQUEST_SEED, VAULT_SEED},
     errors::VaultError,
-    events::ManagerWithdrawEvent,
+    events::ManagerWithdrawExecutedEvent,
     math::{checked_float_cap, total_assets},
-    state::Vault,
+    state::{ManagerWithdrawRequest, Vault},
 };
 
 #[derive(Accounts)]
-pub struct ManagerWithdraw<'info> {
-    pub manager: Signer<'info>,
+pub struct ExecuteManagerWithdraw<'info> {
+    #[account(mut)]
+    pub executor: Signer<'info>,
 
     #[account(
         mut,
         seeds = [VAULT_SEED, underlying_mint.key().as_ref()],
         bump = vault.bump,
-        has_one = manager @ VaultError::UnauthorizedManager,
         has_one = underlying_mint,
         has_one = vault_token_account,
     )]
@@ -44,10 +44,24 @@ pub struct ManagerWithdraw<'info> {
     )]
     pub receiver_underlying_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
+    #[account(
+        mut,
+        seeds = [
+            MANAGER_WITHDRAW_REQUEST_SEED,
+            vault.key().as_ref(),
+            manager_withdraw_request.request_id.to_le_bytes().as_ref(),
+        ],
+        bump = manager_withdraw_request.bump,
+        has_one = vault @ VaultError::InvalidManagerWithdrawRequest,
+        has_one = receiver_underlying_token_account @ VaultError::InvalidManagerWithdrawRequest,
+        close = executor,
+    )]
+    pub manager_withdraw_request: Account<'info, ManagerWithdrawRequest>,
+
     pub token_program: Interface<'info, TokenInterface>,
 }
 
-impl<'info> ManagerWithdraw<'info> {
+impl<'info> ExecuteManagerWithdraw<'info> {
     fn transfer_assets_to_receiver(&self, amount: u64, signer_seeds: &[&[&[u8]]]) -> Result<()> {
         token_interface::transfer_checked(
             CpiContext::new_with_signer(
@@ -66,10 +80,25 @@ impl<'info> ManagerWithdraw<'info> {
     }
 }
 
-pub fn handler(ctx: Context<ManagerWithdraw>, amount: u64) -> Result<()> {
-    require!(amount > 0, VaultError::InvalidAmount);
+pub fn handler(ctx: Context<ExecuteManagerWithdraw>) -> Result<()> {
     require!(!ctx.accounts.vault.is_shutdown, VaultError::VaultShutdown);
+    require!(
+        ctx.accounts.manager_withdraw_request.amount > 0,
+        VaultError::InvalidAmount
+    );
+    require_keys_eq!(
+        ctx.accounts.manager_withdraw_request.manager,
+        ctx.accounts.vault.manager,
+        VaultError::UnauthorizedManager
+    );
 
+    let current_slot = Clock::get()?.slot;
+    require!(
+        current_slot >= ctx.accounts.manager_withdraw_request.executable_after_slot,
+        VaultError::ManagerWithdrawTimelockNotElapsed
+    );
+
+    let amount = ctx.accounts.manager_withdraw_request.amount;
     let vault_balance = ctx.accounts.vault_token_account.amount;
     let float_outstanding = ctx.accounts.vault.float_outstanding;
 
@@ -81,25 +110,31 @@ pub fn handler(ctx: Context<ManagerWithdraw>, amount: u64) -> Result<()> {
         .checked_add(amount)
         .ok_or_else(|| error!(VaultError::MathOverflow))?;
 
-    let max_float_bps = ctx.accounts.vault.max_float_bps;
-
-    checked_float_cap(total_assets_now, post_float_outstanding, max_float_bps)?;
+    checked_float_cap(
+        total_assets_now,
+        post_float_outstanding,
+        ctx.accounts.vault.max_float_bps,
+    )?;
 
     let underlying_mint_key = ctx.accounts.underlying_mint.key();
     let vault_bump = [ctx.accounts.vault.bump];
 
-    let signer_seeds: &[&[&[u8]]] = &[&[VAULT_SEED, underlying_mint_key.as_ref(), &vault_bump]];
+    let vault_signer_seeds: &[&[&[u8]]] =
+        &[&[VAULT_SEED, underlying_mint_key.as_ref(), &vault_bump]];
 
     ctx.accounts
-        .transfer_assets_to_receiver(amount, signer_seeds)?;
+        .transfer_assets_to_receiver(amount, vault_signer_seeds)?;
 
     ctx.accounts.vault.float_outstanding = post_float_outstanding;
 
-    emit!(ManagerWithdrawEvent {
+    emit!(ManagerWithdrawExecutedEvent {
         vault: ctx.accounts.vault.key(),
-        manager: ctx.accounts.manager.key(),
+        manager: ctx.accounts.manager_withdraw_request.manager,
+        executor: ctx.accounts.executor.key(),
+        request: ctx.accounts.manager_withdraw_request.key(),
+        request_id: ctx.accounts.manager_withdraw_request.request_id,
         receiver_underlying_token_account: ctx.accounts.receiver_underlying_token_account.key(),
-        assets_out: amount,
+        amount,
         float_outstanding: post_float_outstanding,
         total_assets: total_assets_now,
     });

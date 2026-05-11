@@ -6,8 +6,14 @@ import {
     TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 
-import { DEFAULT_MAX_FLOAT_BPS, manager, program } from "./helpers/setup";
 import {
+    DEFAULT_MAX_FLOAT_BPS,
+    DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS,
+    manager,
+    program,
+} from "./helpers/setup";
+import {
+    deriveManagerWithdrawRequestPda,
     deriveShareMintPda,
     deriveVaultPda,
     deriveVaultTokenAccount,
@@ -40,7 +46,7 @@ async function setupVault(
     const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
     await program.methods
-        .initializeVault(DEFAULT_MAX_FLOAT_BPS, emergencyAdmin.publicKey)
+        .initializeVault(DEFAULT_MAX_FLOAT_BPS, emergencyAdmin.publicKey, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
         .accountsPartial({
             manager,
             underlyingMint,
@@ -104,6 +110,34 @@ async function activateEmergencyShutdown(setup: VaultTestSetup): Promise<void> {
         })
         .signers([setup.emergencyAdmin])
         .rpc();
+}
+
+async function requestManagerWithdraw(
+    setup: VaultTestSetup,
+    amount: number,
+    receiverUnderlyingTokenAccount: PublicKey
+): Promise<PublicKey> {
+    const vaultState = await program.account.vault.fetch(setup.vault);
+    const [managerWithdrawRequest] = deriveManagerWithdrawRequestPda(
+        setup.vault,
+        vaultState.nextManagerWithdrawRequestId
+    );
+
+    await program.methods
+        .requestManagerWithdraw(new anchor.BN(amount))
+        .accountsPartial({
+            manager,
+            vault: setup.vault,
+            underlyingMint: setup.underlyingMint,
+            vaultTokenAccount: setup.vaultTokenAccount,
+            receiverUnderlyingTokenAccount,
+            managerWithdrawRequest,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+    return managerWithdrawRequest;
 }
 
 describe("emergency_shutdown", () => {
@@ -197,7 +231,7 @@ describe("emergency_shutdown", () => {
         }
     });
 
-    it("blocks manager withdrawals after shutdown", async () => {
+    it("blocks manager withdrawal requests after shutdown", async () => {
         const setup = await setupVault(1_000_000);
         const receiverUnderlyingTokenAccount = await createTokenAccount(
             setup.underlyingMint,
@@ -207,19 +241,13 @@ describe("emergency_shutdown", () => {
         await activateEmergencyShutdown(setup);
 
         try {
-            await program.methods
-                .managerWithdraw(new anchor.BN(100_000))
-                .accountsPartial({
-                    manager,
-                    vault: setup.vault,
-                    underlyingMint: setup.underlyingMint,
-                    vaultTokenAccount: setup.vaultTokenAccount,
-                    receiverUnderlyingTokenAccount,
-                    tokenProgram: TOKEN_PROGRAM_ID,
-                })
-                .rpc();
+            await requestManagerWithdraw(
+                setup,
+                100_000,
+                receiverUnderlyingTokenAccount
+            );
 
-            assert.fail("Expected managerWithdraw to fail after shutdown");
+            assert.fail("Expected request_manager_withdraw to fail after shutdown");
         } catch (error) {
             assert.include(String(error), "VaultShutdown");
         }

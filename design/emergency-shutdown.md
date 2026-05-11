@@ -84,7 +84,7 @@ This instruction should be irreversible in the first version. A separate `resume
 | Instruction | Behavior when shut down | Reason |
 | --- | --- | --- |
 | `deposit` | Blocked | Prevents new users from entering a vault in emergency mode. |
-| `manager_withdraw` | Blocked | Prevents more assets from leaving the vault into manager-controlled float. |
+| `request_manager_withdraw` / `execute_manager_withdraw` | Blocked | Prevents new or pending manager withdrawals from moving assets out of the vault. |
 | `manager_deposit` | Allowed | Lets anyone return assets and reduce outstanding float. |
 | `request_withdraw` | Allowed | Users should still be able to ask to exit. |
 | `process_withdraw` | Allowed if liquid | Users should still receive assets when liquidity is available. |
@@ -151,7 +151,7 @@ Add tests for:
 3. Non-admin cannot activate shutdown.
 4. Shutdown cannot be activated twice.
 5. `deposit` fails after shutdown.
-6. `manager_withdraw` fails after shutdown.
+6. `request_manager_withdraw` and `execute_manager_withdraw` fail after shutdown.
 7. `manager_deposit` still works after shutdown.
 8. `request_withdraw` still works after shutdown.
 9. `process_withdraw` still works after shutdown when the vault has enough liquidity.
@@ -164,7 +164,7 @@ Add tests for:
 2. Update `initialize_vault` and its tests.
 3. Add new errors.
 4. Add `activate_emergency_shutdown` instruction.
-5. Add shutdown guards to `deposit` and `manager_withdraw`.
+5. Add shutdown guards to `deposit`, `request_manager_withdraw`, and `execute_manager_withdraw`.
 6. Add event emission.
 7. Add tests for the shutdown flow.
 8. Update playground only if we want a manual emergency-mode demo.

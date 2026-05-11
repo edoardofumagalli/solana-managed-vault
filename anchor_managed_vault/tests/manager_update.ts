@@ -6,8 +6,15 @@ import {
     TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 
-import { DEFAULT_MAX_FLOAT_BPS, manager, program } from "./helpers/setup";
 import {
+    DEFAULT_MAX_FLOAT_BPS,
+    DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS,
+    connection,
+    manager,
+    program,
+} from "./helpers/setup";
+import {
+    deriveManagerWithdrawRequestPda,
     deriveShareMintPda,
     deriveVaultPda,
     deriveVaultTokenAccount,
@@ -40,7 +47,7 @@ async function setupVault(
     const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
     await program.methods
-        .initializeVault(maxFloatBps, manager)
+        .initializeVault(maxFloatBps, manager, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
         .accountsPartial({
             manager,
             underlyingMint,
@@ -129,6 +136,17 @@ async function acceptManager(
         .rpc();
 }
 
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitUntilSlot(targetSlot: anchor.BN): Promise<void> {
+    while (new anchor.BN(await connection.getSlot()).lt(targetSlot)) {
+        await sleep(250);
+    }
+}
+
 async function managerWithdraw(
     setup: VaultTestSetup,
     amount: number,
@@ -136,23 +154,54 @@ async function managerWithdraw(
     signer: Keypair | null = null,
     managerAccount: PublicKey = manager
 ): Promise<void> {
-    const builder = program.methods
-        .managerWithdraw(new anchor.BN(amount))
+    const vaultState = await program.account.vault.fetch(setup.vault);
+    const [managerWithdrawRequest] = deriveManagerWithdrawRequestPda(
+        setup.vault,
+        vaultState.nextManagerWithdrawRequestId
+    );
+
+    const requestBuilder = program.methods
+        .requestManagerWithdraw(new anchor.BN(amount))
         .accountsPartial({
             manager: managerAccount,
             vault: setup.vault,
             underlyingMint: setup.underlyingMint,
             vaultTokenAccount: setup.vaultTokenAccount,
             receiverUnderlyingTokenAccount,
+            managerWithdrawRequest,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+        });
+
+    if (signer) {
+        await requestBuilder.signers([signer]).rpc();
+    } else {
+        await requestBuilder.rpc();
+    }
+
+    const requestState = await program.account.managerWithdrawRequest.fetch(
+        managerWithdrawRequest
+    );
+    await waitUntilSlot(requestState.executableAfterSlot);
+
+    const executeBuilder = program.methods
+        .executeManagerWithdraw()
+        .accountsPartial({
+            executor: managerAccount,
+            vault: setup.vault,
+            underlyingMint: setup.underlyingMint,
+            vaultTokenAccount: setup.vaultTokenAccount,
+            receiverUnderlyingTokenAccount,
+            managerWithdrawRequest,
             tokenProgram: TOKEN_PROGRAM_ID,
         });
 
     if (signer) {
-        await builder.signers([signer]).rpc();
+        await executeBuilder.signers([signer]).rpc();
         return;
     }
 
-    await builder.rpc();
+    await executeBuilder.rpc();
 }
 
 describe("manager_update", () => {
@@ -267,7 +316,7 @@ describe("manager_update", () => {
         );
     });
 
-    it("moves manager authority for manager_withdraw", async () => {
+    it("moves manager authority for timelocked manager withdrawals", async () => {
         const depositAmount = 1_000_000;
         const withdrawAmount = 100_000;
         const setup = await setupVault(depositAmount);
@@ -280,11 +329,19 @@ describe("manager_update", () => {
 
         await nominateManager(setup, pendingManager.publicKey);
         await acceptManager(setup, pendingManager);
+        const airdropSignature = await program.provider.connection.requestAirdrop(
+            pendingManager.publicKey,
+            1_000_000_000
+        );
+        await program.provider.connection.confirmTransaction(
+            airdropSignature,
+            "confirmed"
+        );
 
         try {
             await managerWithdraw(setup, withdrawAmount, receiverUnderlyingTokenAccount);
 
-            assert.fail("Expected old manager to lose manager_withdraw authority");
+            assert.fail("Expected old manager to lose manager withdrawal authority");
         } catch (error) {
             assert.include(String(error), "UnauthorizedManager");
         }

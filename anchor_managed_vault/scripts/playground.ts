@@ -22,6 +22,7 @@ const ESCROW_SHARE_SEED = Buffer.from("escrow_share");
 
 const DEFAULT_DECIMALS = 6;
 const DEFAULT_MAX_FLOAT_BPS = 2_000;
+const DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS = new anchor.BN(8);
 const DEPOSIT_AMOUNT = 1_000_000;
 const SHARES_TO_WITHDRAW = 250_000;
 
@@ -183,7 +184,7 @@ async function main(): Promise<void> {
 
     console.log("\nInitializing vault...");
     const initializeSignature = await program.methods
-        .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager)
+        .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
         .accountsPartial({
             manager,
             underlyingMint,
