@@ -68,10 +68,19 @@ pub struct InitializeVault<'info> {
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
-pub fn handler(ctx: Context<InitializeVault>, max_float_bps: u16) -> Result<()> {
+pub fn handler(
+    ctx: Context<InitializeVault>,
+    max_float_bps: u16,
+    emergency_admin: Pubkey,
+) -> Result<()> {
     require!(
         max_float_bps <= MAX_FLOAT_BPS,
         VaultError::InvalidMaxFloatBps
+    );
+    require_keys_neq!(
+        emergency_admin,
+        Pubkey::default(),
+        VaultError::InvalidEmergencyAdmin
     );
 
     let vault = &mut ctx.accounts.vault;
@@ -79,11 +88,14 @@ pub fn handler(ctx: Context<InitializeVault>, max_float_bps: u16) -> Result<()> 
     vault.manager = ctx.accounts.manager.key();
     // No manager transfer is pending at initialization; default Pubkey is our sentinel.
     vault.pending_manager = Pubkey::default();
+    vault.emergency_admin = emergency_admin;
     vault.underlying_mint = ctx.accounts.underlying_mint.key();
     vault.share_mint = ctx.accounts.share_mint.key();
     vault.vault_token_account = ctx.accounts.vault_token_account.key();
     vault.float_outstanding = 0;
     vault.max_float_bps = max_float_bps;
+    vault.is_shutdown = false;
+    vault.shutdown_slot = 0;
     vault.total_tickets = 0;
     vault.next_ticket_to_process = 0;
     vault.bump = ctx.bumps.vault;
@@ -91,6 +103,7 @@ pub fn handler(ctx: Context<InitializeVault>, max_float_bps: u16) -> Result<()> 
     emit!(VaultInitializedEvent {
         vault: vault.key(),
         manager: vault.manager,
+        emergency_admin: vault.emergency_admin,
         underlying_mint: vault.underlying_mint,
         share_mint: vault.share_mint,
         vault_token_account: vault.vault_token_account,

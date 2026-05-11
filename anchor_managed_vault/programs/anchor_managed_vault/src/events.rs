@@ -4,10 +4,19 @@ use anchor_lang::prelude::*;
 pub struct VaultInitializedEvent {
     pub vault: Pubkey,
     pub manager: Pubkey,
+    pub emergency_admin: Pubkey,
     pub underlying_mint: Pubkey,
     pub share_mint: Pubkey,
     pub vault_token_account: Pubkey,
     pub max_float_bps: u16,
+}
+
+#[event]
+pub struct EmergencyShutdownActivatedEvent {
+    pub vault: Pubkey,
+    pub emergency_admin: Pubkey,
+    pub shutdown_slot: u64,
+    pub float_outstanding: u64,
 }
 
 #[event]

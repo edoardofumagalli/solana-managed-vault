@@ -2,7 +2,7 @@
 
 ## Goal
 
-Use this document as the execution plan for building the Anchor managed vault program. The design choices are already documented in `design-decisions.md`; this file focuses on implementation order and test strategy.
+Use this document as the execution plan for building the Anchor managed vault program. The design choices are already documented in `design/managed-vault-design-decisions.md`; this file focuses on implementation order and test strategy.
 
 ## 1. Freeze Practical Choices
 

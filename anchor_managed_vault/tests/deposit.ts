@@ -32,7 +32,7 @@ describe("deposit", () => {
         const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
         await program.methods
-            .initializeVault(DEFAULT_MAX_FLOAT_BPS)
+            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager)
             .accountsPartial({
                 manager,
                 underlyingMint,
@@ -97,7 +97,7 @@ describe("deposit", () => {
         const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
         await program.methods
-            .initializeVault(DEFAULT_MAX_FLOAT_BPS)
+            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager)
             .accountsPartial({
                 manager,
                 underlyingMint,
@@ -154,7 +154,7 @@ describe("deposit", () => {
         const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
         await program.methods
-            .initializeVault(DEFAULT_MAX_FLOAT_BPS)
+            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager)
             .accountsPartial({
                 manager,
                 underlyingMint,
@@ -275,7 +275,7 @@ describe("deposit", () => {
         const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
         await program.methods
-            .initializeVault(DEFAULT_MAX_FLOAT_BPS)
+            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager)
             .accountsPartial({
                 manager,
                 underlyingMint,
@@ -366,7 +366,7 @@ describe("deposit", () => {
         const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
 
         await program.methods
-            .initializeVault(DEFAULT_MAX_FLOAT_BPS)
+            .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager)
             .accountsPartial({
                 manager,
                 underlyingMint,
