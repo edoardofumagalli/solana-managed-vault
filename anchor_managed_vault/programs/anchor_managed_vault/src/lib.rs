@@ -59,6 +59,13 @@ pub mod anchor_managed_vault {
         instructions::execute_manager_withdraw::handler(ctx)
     }
 
+    pub fn report_float_value(
+        ctx: Context<ReportFloatValue>,
+        reported_float_value: u64,
+    ) -> Result<()> {
+        instructions::report_float_value::handler(ctx, reported_float_value)
+    }
+
     pub fn manager_deposit(ctx: Context<ManagerDeposit>, amount: u64) -> Result<()> {
         instructions::manager_deposit::handler(ctx, amount)
     }
