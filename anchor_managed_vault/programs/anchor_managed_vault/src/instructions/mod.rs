@@ -10,6 +10,7 @@ pub mod manager_deposit;
 pub mod nominate_manager;
 pub mod process_withdraw;
 pub mod request_manager_withdraw;
+pub mod report_float_value;
 pub mod request_withdraw;
 
 pub use accept_manager::*;
@@ -22,4 +23,5 @@ pub use manager_deposit::*;
 pub use nominate_manager::*;
 pub use process_withdraw::*;
 pub use request_manager_withdraw::*;
+pub use report_float_value::*;
 pub use request_withdraw::*;

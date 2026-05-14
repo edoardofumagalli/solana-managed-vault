@@ -96,6 +96,16 @@ pub struct ManagerWithdrawExecutedEvent {
 }
 
 #[event]
+pub struct FloatValueReportedEvent {
+    pub vault: Pubkey,
+    pub manager: Pubkey,
+    pub old_float_value: u64,
+    pub new_float_value: u64,
+    pub vault_underlying_balance: u64,
+    pub total_assets: u64,
+}
+
+#[event]
 pub struct ManagerDepositEvent {
     pub vault: Pubkey,
     pub caller: Pubkey,
