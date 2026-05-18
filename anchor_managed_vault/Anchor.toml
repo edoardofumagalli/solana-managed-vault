@@ -7,6 +7,7 @@ skip-lint = false
 
 [programs.localnet]
 anchor_managed_vault = "AZjFTHJFBduuqPf1Gtado4r59rJ8zYqSNFPhiYFDUDzr"
+mock_yield_module = "AFPVi8LB8iwXAGLr72AqaG6aH8pwVYzfR5ArCiiceBWe"
 
 [registry]
 url = "https://api.apr.dev"
