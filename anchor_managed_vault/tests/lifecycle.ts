@@ -473,7 +473,7 @@ describe("lifecycle", () => {
         let vaultUnderlying = await fetchTokenAccount(setup.vaultTokenAccount);
         let observedTotalAssets = new anchor.BN(
             vaultUnderlying.amount.toString()
-        ).add(vaultState.floatOutstanding).add(vaultState.moduleNav);
+        ).add(vaultState.floatOutstanding).add(vaultState.modulesNavTotal);
 
         assert.equal(observedTotalAssets.toString(), depositAmount.toString());
 
@@ -495,7 +495,7 @@ describe("lifecycle", () => {
         vaultUnderlying = await fetchTokenAccount(setup.vaultTokenAccount);
         observedTotalAssets = new anchor.BN(
             vaultUnderlying.amount.toString()
-        ).add(vaultState.floatOutstanding).add(vaultState.moduleNav);
+        ).add(vaultState.floatOutstanding).add(vaultState.modulesNavTotal);
         const shareMint = await fetchMint(setup.shareMint);
 
         assert.equal(
@@ -560,7 +560,7 @@ describe("lifecycle", () => {
         const shareMint = await fetchMint(setup.shareMint);
         const observedTotalAssets = new anchor.BN(
             vaultUnderlying.amount.toString()
-        ).add(vaultState.floatOutstanding).add(vaultState.moduleNav);
+        ).add(vaultState.floatOutstanding).add(vaultState.modulesNavTotal);
 
         assert.equal(
             secondUserShares.amount.toString(),

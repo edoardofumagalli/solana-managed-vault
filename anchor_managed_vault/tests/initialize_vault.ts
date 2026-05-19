@@ -79,7 +79,8 @@ describe("initialize_vault", () => {
         );
 
         assert.equal(vaultState.floatOutstanding.toNumber(), 0);
-        assert.equal(vaultState.moduleNav.toNumber(), 0);
+        assert.equal(vaultState.modulesNavTotal.toNumber(), 0);
+        assert.equal(vaultState.moduleCount, 0);
         assert.equal(vaultState.maxFloatBps, DEFAULT_MAX_FLOAT_BPS);
         assert.equal(
             vaultState.managerWithdrawDelaySlots.toNumber(),

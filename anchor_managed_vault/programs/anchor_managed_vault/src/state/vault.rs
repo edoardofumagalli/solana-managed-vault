@@ -10,7 +10,8 @@ pub struct Vault {
     pub share_mint: Pubkey,
     pub vault_token_account: Pubkey,
     pub float_outstanding: u64,
-    pub module_nav: u64,
+    pub modules_nav_total: u64,
+    pub module_count: u8,
     pub max_float_bps: u16, // basis points
     pub manager_withdraw_delay_slots: u64,
     pub is_shutdown: bool,

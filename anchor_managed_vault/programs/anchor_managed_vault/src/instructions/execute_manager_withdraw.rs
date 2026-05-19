@@ -107,7 +107,7 @@ pub fn handler(ctx: Context<ExecuteManagerWithdraw>) -> Result<()> {
     let total_assets_now = total_assets(
         vault_balance,
         float_outstanding,
-        ctx.accounts.vault.module_nav,
+        ctx.accounts.vault.modules_nav_total,
     )?;
 
     let post_float_outstanding = float_outstanding
@@ -115,7 +115,7 @@ pub fn handler(ctx: Context<ExecuteManagerWithdraw>) -> Result<()> {
         .ok_or_else(|| error!(VaultError::MathOverflow))?;
 
     let post_deployed_value = post_float_outstanding
-        .checked_add(ctx.accounts.vault.module_nav)
+        .checked_add(ctx.accounts.vault.modules_nav_total)
         .ok_or_else(|| error!(VaultError::MathOverflow))?;
 
     checked_float_cap(

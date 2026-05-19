@@ -8,12 +8,16 @@ use crate::{
 /// Returns the vault's total managed assets.
 ///
 /// This includes liquid assets held by the vault token account, manually
-/// reported off-vault float, and NAV synced from the on-chain mock module.
-pub fn total_assets(vault_balance: u64, float_outstanding: u64, module_nav: u64) -> Result<u64> {
+/// reported off-vault float, and NAV synced from the on-chain modules.
+pub fn total_assets(
+    vault_balance: u64,
+    float_outstanding: u64,
+    modules_nav_total: u64,
+) -> Result<u64> {
     vault_balance
         .checked_add(float_outstanding)
         .ok_or_else(|| error!(VaultError::MathOverflow))?
-        .checked_add(module_nav)
+        .checked_add(modules_nav_total)
         .ok_or_else(|| error!(VaultError::MathOverflow))
 }
 

@@ -115,12 +115,12 @@ async function printVaultSnapshot(
     );
     const totalAssets = new anchor.BN(vaultUnderlying.amount.toString())
         .add(vaultState.floatOutstanding)
-        .add(vaultState.moduleNav);
+        .add(vaultState.modulesNavTotal);
 
     console.log("\nVault snapshot");
     console.log(`vault underlying balance: ${vaultUnderlying.amount.toString()}`);
     console.log(`float outstanding: ${vaultState.floatOutstanding.toString()}`);
-    console.log(`module nav: ${vaultState.moduleNav.toString()}`);
+    console.log(`modules nav total: ${vaultState.modulesNavTotal.toString()}`);
     console.log(`total assets: ${totalAssets.toString()}`);
     console.log(`share supply: ${shareMintAccount.supply.toString()}`);
     console.log(`total tickets: ${vaultState.totalTickets.toString()}`);

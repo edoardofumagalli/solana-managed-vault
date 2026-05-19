@@ -103,7 +103,7 @@ pub fn handler(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     let total_assets_before = total_assets(
         ctx.accounts.vault_token_account.amount,
         ctx.accounts.vault.float_outstanding,
-        ctx.accounts.vault.module_nav,
+        ctx.accounts.vault.modules_nav_total,
     )?;
 
     let total_shares_before = ctx.accounts.share_mint.supply;

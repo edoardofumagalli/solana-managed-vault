@@ -85,7 +85,7 @@ pub fn handler(ctx: Context<ManagerDeposit>, amount: u64) -> Result<()> {
     let total_assets_after = total_assets(
         vault_balance_after,
         new_float_outstanding,
-        ctx.accounts.vault.module_nav,
+        ctx.accounts.vault.modules_nav_total,
     )?;
 
     ctx.accounts.transfer_assets_to_vault(amount)?;
