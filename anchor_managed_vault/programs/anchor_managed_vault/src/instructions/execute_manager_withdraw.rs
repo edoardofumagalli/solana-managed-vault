@@ -104,15 +104,23 @@ pub fn handler(ctx: Context<ExecuteManagerWithdraw>) -> Result<()> {
 
     require!(vault_balance >= amount, VaultError::InsufficientLiquidity);
 
-    let total_assets_now = total_assets(vault_balance, float_outstanding)?;
+    let total_assets_now = total_assets(
+        vault_balance,
+        float_outstanding,
+        ctx.accounts.vault.module_nav,
+    )?;
 
     let post_float_outstanding = float_outstanding
         .checked_add(amount)
         .ok_or_else(|| error!(VaultError::MathOverflow))?;
 
+    let post_deployed_value = post_float_outstanding
+        .checked_add(ctx.accounts.vault.module_nav)
+        .ok_or_else(|| error!(VaultError::MathOverflow))?;
+
     checked_float_cap(
         total_assets_now,
-        post_float_outstanding,
+        post_deployed_value,
         ctx.accounts.vault.max_float_bps,
     )?;
 

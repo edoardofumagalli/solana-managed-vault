@@ -102,6 +102,7 @@ pub fn handler(
         share_mint,
         vault_token_account,
         float_outstanding: 0,
+        module_nav: 0,
         max_float_bps,
         manager_withdraw_delay_slots,
         is_shutdown: false,

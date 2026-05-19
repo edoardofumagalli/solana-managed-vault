@@ -113,13 +113,14 @@ async function printVaultSnapshot(
         undefined,
         TOKEN_PROGRAM_ID
     );
-    const totalAssets = new anchor.BN(vaultUnderlying.amount.toString()).add(
-        vaultState.floatOutstanding
-    );
+    const totalAssets = new anchor.BN(vaultUnderlying.amount.toString())
+        .add(vaultState.floatOutstanding)
+        .add(vaultState.moduleNav);
 
     console.log("\nVault snapshot");
     console.log(`vault underlying balance: ${vaultUnderlying.amount.toString()}`);
     console.log(`float outstanding: ${vaultState.floatOutstanding.toString()}`);
+    console.log(`module nav: ${vaultState.moduleNav.toString()}`);
     console.log(`total assets: ${totalAssets.toString()}`);
     console.log(`share supply: ${shareMintAccount.supply.toString()}`);
     console.log(`total tickets: ${vaultState.totalTickets.toString()}`);

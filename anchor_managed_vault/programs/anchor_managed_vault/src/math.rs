@@ -7,11 +7,13 @@ use crate::{
 
 /// Returns the vault's total managed assets.
 ///
-/// This includes both liquid assets still held by the vault token account and
-/// assets temporarily held outside the vault as manager float.
-pub fn total_assets(vault_balance: u64, float_outstanding: u64) -> Result<u64> {
+/// This includes liquid assets held by the vault token account, manually
+/// reported off-vault float, and NAV synced from the on-chain mock module.
+pub fn total_assets(vault_balance: u64, float_outstanding: u64, module_nav: u64) -> Result<u64> {
     vault_balance
         .checked_add(float_outstanding)
+        .ok_or_else(|| error!(VaultError::MathOverflow))?
+        .checked_add(module_nav)
         .ok_or_else(|| error!(VaultError::MathOverflow))
 }
 
@@ -79,16 +81,18 @@ pub fn shares_to_assets_down(shares: u64, total_assets: u64, total_shares: u64) 
     Ok(assets)
 }
 
-/// Verifies that the manager float remains within the vault-specific cap.
+/// Verifies that deployed value remains within the vault-specific cap.
+///
+/// Deployed value includes manual float plus module NAV.
 ///
 /// Formula:
-/// max_float = total_assets * max_float_bps / BPS_DENOMINATOR
+/// max_deployed = total_assets * max_float_bps / BPS_DENOMINATOR
 ///
 /// `MAX_FLOAT_BPS` is only the global upper bound for configuration. The
 /// `max_float_bps` argument is the actual cap configured on this vault.
 pub fn checked_float_cap(
     total_assets: u64,
-    post_float_outstanding: u64,
+    post_deployed_value: u64,
     max_float_bps: u16,
 ) -> Result<()> {
     require!(
@@ -103,7 +107,7 @@ pub fn checked_float_cap(
         .ok_or_else(|| error!(VaultError::MathOverflow))?;
 
     require!(
-        post_float_outstanding as u128 <= max_float,
+        post_deployed_value as u128 <= max_float,
         VaultError::FloatCapExceeded
     );
 
