@@ -129,3 +129,25 @@ pub struct ManagerAcceptedEvent {
     pub old_manager: Pubkey,
     pub new_manager: Pubkey,
 }
+#[event]
+pub struct ModuleRegisteredEvent {
+    pub vault: Pubkey,
+    pub manager: Pubkey,
+    pub module_entry: Pubkey,
+    pub module_program_id: Pubkey,
+    pub policy_seed: u64,
+    pub module_count: u8,
+}
+#[event]
+pub struct ModuleNavSyncedEvent {
+    pub vault: Pubkey,
+    pub cranker: Pubkey,
+    pub module_entry: Pubkey,
+    pub module_program_id: Pubkey,
+    pub module_state: Pubkey,
+    pub old_cached_nav: u64,
+    pub new_cached_nav: u64,
+    pub modules_nav_total: u64,
+    pub slot: u64,
+}
+

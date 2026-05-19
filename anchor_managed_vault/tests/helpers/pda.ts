@@ -14,6 +14,7 @@ const WITHDRAW_TICKET_SEED = Buffer.from("withdraw_ticket");
 const USER_VAULT_POSITION_SEED = Buffer.from("user_vault_position");
 const ESCROW_SHARE_SEED = Buffer.from("escrow_share");
 const MANAGER_WITHDRAW_REQUEST_SEED = Buffer.from("manager_withdraw_request");
+const MODULE_ENTRY_SEED = Buffer.from("module_entry");
 const MOCK_MODULE_STATE_SEED = Buffer.from("mock_module_state");
 const MOCK_MODULE_AUTHORITY_SEED = Buffer.from("mock_module_authority");
 
@@ -106,6 +107,31 @@ export function deriveManagerWithdrawRequestPda(
 
     return PublicKey.findProgramAddressSync(
         [MANAGER_WITHDRAW_REQUEST_SEED, vault.toBuffer(), requestIdSeed],
+        program.programId
+    );
+}
+
+// Derives the per-module policy entry tracked by the vault program.
+// policySeed mirrors Rust u64::to_le_bytes() and allows the same external
+// module program to register multiple strategies for the same vault.
+export function deriveModuleEntryPda(
+    vault: PublicKey,
+    moduleProgramId: PublicKey,
+    policySeed: number | anchor.BN
+): [PublicKey, number] {
+    const policySeedBytes = new anchor.BN(policySeed).toArrayLike(
+        Buffer,
+        "le",
+        8
+    );
+
+    return PublicKey.findProgramAddressSync(
+        [
+            MODULE_ENTRY_SEED,
+            vault.toBuffer(),
+            moduleProgramId.toBuffer(),
+            policySeedBytes,
+        ],
         program.programId
     );
 }

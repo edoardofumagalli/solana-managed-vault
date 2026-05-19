@@ -296,6 +296,32 @@ This lets tests simulate yield by minting underlying directly into the module to
 
 ## Vault Instructions
 
+### `register_module`
+
+Manager instruction. Registers one external module policy in the vault by creating a `ModuleEntry` PDA.
+
+Accounts:
+
+- `manager`: signer, must match `vault.manager` and pays rent
+- `vault`: mutable
+- `module_entry`: initialized PDA
+- `module_program`: executable external module program
+- `system_program`
+
+PDA seeds:
+
+```text
+[b"module_entry", vault, module_program, policy_seed]
+```
+
+Behavior:
+
+1. Require vault is not shutdown.
+2. Require `vault.module_count < MAX_MODULES_PER_VAULT`.
+3. Initialize `ModuleEntry` with `cached_nav = 0`, `nav_last_updated_slot = 0`, and `is_active = true`.
+4. Increment `vault.module_count`.
+5. Emit event.
+
 ### `deploy_to_mock_module`
 
 Manager instruction. Moves idle vault liquidity into the mock module through CPI.
@@ -342,7 +368,7 @@ Shutdown rule:
 - `deploy_to_mock_module` should be blocked during shutdown.
 - `recall_from_mock_module` should remain allowed during shutdown, because it brings assets back.
 
-### `sync_mock_module_nav`
+### `sync_module_nav`
 
 Permissionless instruction. Copies the module's `cached_nav` into the related `ModuleEntry` and updates `vault.modules_nav_total`.
 
@@ -373,6 +399,16 @@ Add vault events:
 
 ```rust
 #[event]
+pub struct ModuleRegisteredEvent {
+    pub vault: Pubkey,
+    pub manager: Pubkey,
+    pub module_entry: Pubkey,
+    pub module_program_id: Pubkey,
+    pub policy_seed: u64,
+    pub module_count: u8,
+}
+
+#[event]
 pub struct MockModuleDeployedEvent {
     pub vault: Pubkey,
     pub manager: Pubkey,
@@ -395,7 +431,7 @@ pub struct MockModuleRecalledEvent {
 }
 
 #[event]
-pub struct MockModuleNavSyncedEvent {
+pub struct ModuleNavSyncedEvent {
     pub vault: Pubkey,
     pub module_state: Pubkey,
     pub old_cached_nav: u64,
@@ -443,7 +479,7 @@ Add focused tests for the module path.
    - deploy assets;
    - mint extra underlying directly to module token account;
    - call module `calculate_nav`;
-   - call vault `sync_mock_module_nav`;
+   - call vault `sync_module_nav`;
    - process a user withdrawal and verify share price includes the higher module NAV.
 
 4. Recall moves assets back to the vault.
@@ -471,10 +507,11 @@ Add focused tests for the module path.
 6. Add `modules_nav_total` and `module_count` to `Vault` and initialize both to zero.
 7. Update math helpers to include `modules_nav_total` in total assets.
 8. Update existing vault instructions/tests affected by total assets.
-9. Implement mock module `deposit` and `withdraw`.
-10. Implement vault `deploy_to_mock_module`, `recall_from_mock_module`, and `sync_mock_module_nav`.
-11. Add focused integration tests.
-12. Run full regression.
+9. Implement vault `register_module`.
+10. Implement mock module `deposit` and `withdraw`.
+11. Implement vault `deploy_to_mock_module`, `recall_from_mock_module`, and `sync_module_nav`.
+12. Add focused integration tests.
+13. Run full regression.
 
 ## Future Production Direction
 
