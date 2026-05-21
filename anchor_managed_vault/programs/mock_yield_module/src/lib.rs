@@ -21,4 +21,8 @@ pub mod mock_yield_module {
     pub fn calculate_nav(ctx: Context<CalculateNav>) -> Result<()> {
         instructions::calculate_nav::handler(ctx)
     }
+
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        instructions::deposit::handler(ctx, amount)
+    }
 }

@@ -14,6 +14,9 @@ pub enum MockYieldModuleError {
     #[msg("Invalid token account.")]
     InvalidTokenAccount,
 
+    #[msg("Invalid mint.")]
+    InvalidMint,
+
     #[msg("Math overflow.")]
     MathOverflow,
 }
