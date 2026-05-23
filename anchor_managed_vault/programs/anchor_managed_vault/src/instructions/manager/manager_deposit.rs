@@ -82,7 +82,11 @@ pub fn handler(ctx: Context<ManagerDeposit>, amount: u64) -> Result<()> {
     let vault_balance_after = vault_balance
         .checked_add(amount)
         .ok_or_else(|| error!(VaultError::MathOverflow))?;
-    let total_assets_after = total_assets(vault_balance_after, new_float_outstanding)?;
+    let total_assets_after = total_assets(
+        vault_balance_after,
+        new_float_outstanding,
+        ctx.accounts.vault.modules_nav_total,
+    )?;
 
     ctx.accounts.transfer_assets_to_vault(amount)?;
 

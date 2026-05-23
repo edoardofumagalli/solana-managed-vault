@@ -24,6 +24,23 @@ pub const ESCROW_SHARE_SEED: &[u8] = b"escrow_share";
 // The derivation should also include the vault and a monotonic request id.
 pub const MANAGER_WITHDRAW_REQUEST_SEED: &[u8] = b"manager_withdraw_request";
 
+// PDA seed used to derive per-module accounting entries for a vault.
+// Derive with vault, module program id, and policy_seed so one module program
+// can register multiple independent strategies for the same vault.
+pub const MODULE_ENTRY_SEED: &[u8] = b"module_entry";
+
+// Guardrail for how many external module policies a vault can register.
+// The vault stores only an aggregate NAV total, while each ModuleEntry stores
+// per-policy module details. Keeping a cap avoids unbounded registration.
+pub const MAX_MODULES_PER_VAULT: u8 = 16;
+
+// Standard module-state byte layout read by sync_module_nav.
+// Anchor account data starts with an 8-byte discriminator, then the module
+// header must store: bump (1), vault Pubkey (32), cached_nav u64 (8).
+pub const MODULE_VAULT_OFFSET: usize = 9;
+pub const MODULE_NAV_OFFSET: usize = 41;
+pub const MODULE_NAV_END: usize = 49;
+
 // Basis points denominator: 10_000 bps = 100%.
 // Example: 2_500 bps means 25%.
 pub const BPS_DENOMINATOR: u64 = 10_000;

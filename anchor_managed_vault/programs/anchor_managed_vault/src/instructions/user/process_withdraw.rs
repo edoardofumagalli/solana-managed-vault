@@ -152,6 +152,7 @@ pub fn handler(ctx: Context<ProcessWithdraw>) -> Result<()> {
     let total_assets_now = total_assets(
         ctx.accounts.vault_token_account.amount,
         ctx.accounts.vault.float_outstanding,
+        ctx.accounts.vault.modules_nav_total,
     )?;
 
     let assets_out = shares_to_assets_down(

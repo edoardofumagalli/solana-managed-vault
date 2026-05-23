@@ -14,6 +14,9 @@ const WITHDRAW_TICKET_SEED = Buffer.from("withdraw_ticket");
 const USER_VAULT_POSITION_SEED = Buffer.from("user_vault_position");
 const ESCROW_SHARE_SEED = Buffer.from("escrow_share");
 const MANAGER_WITHDRAW_REQUEST_SEED = Buffer.from("manager_withdraw_request");
+const MODULE_ENTRY_SEED = Buffer.from("module_entry");
+const MOCK_MODULE_STATE_SEED = Buffer.from("mock_module_state");
+const MOCK_MODULE_AUTHORITY_SEED = Buffer.from("mock_module_authority");
 
 // Derives the main vault state PDA for a given underlying mint.
 // A PDA depends on both its seeds and the program id, so the same seeds under a
@@ -108,6 +111,31 @@ export function deriveManagerWithdrawRequestPda(
     );
 }
 
+// Derives the per-module policy entry tracked by the vault program.
+// policySeed mirrors Rust u64::to_le_bytes() and allows the same external
+// module program to register multiple strategies for the same vault.
+export function deriveModuleEntryPda(
+    vault: PublicKey,
+    moduleProgramId: PublicKey,
+    policySeed: number | anchor.BN
+): [PublicKey, number] {
+    const policySeedBytes = new anchor.BN(policySeed).toArrayLike(
+        Buffer,
+        "le",
+        8
+    );
+
+    return PublicKey.findProgramAddressSync(
+        [
+            MODULE_ENTRY_SEED,
+            vault.toBuffer(),
+            moduleProgramId.toBuffer(),
+            policySeedBytes,
+        ],
+        program.programId
+    );
+}
+
 // Derives the token account PDA that escrows shares while a withdrawal ticket is pending.
 // The escrow account authority is the withdraw ticket PDA, not the user.
 export function deriveEscrowShareTokenAccountPda(
@@ -119,3 +147,27 @@ export function deriveEscrowShareTokenAccountPda(
     );
 }
 
+
+// Derives the mock module state PDA. This PDA belongs to the mock_yield_module
+// program, not to the vault program, so the module program id is passed in.
+export function deriveMockModuleStatePda(
+    vault: PublicKey,
+    mockYieldModuleProgramId: PublicKey
+): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+        [MOCK_MODULE_STATE_SEED, vault.toBuffer()],
+        mockYieldModuleProgramId
+    );
+}
+
+// Derives the PDA that owns the mock module token account. The mock module uses
+// this PDA as signer when it later returns funds to the vault.
+export function deriveMockModuleAuthorityPda(
+    mockModuleState: PublicKey,
+    mockYieldModuleProgramId: PublicKey
+): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+        [MOCK_MODULE_AUTHORITY_SEED, mockModuleState.toBuffer()],
+        mockYieldModuleProgramId
+    );
+}

@@ -66,6 +66,22 @@ pub mod anchor_managed_vault {
         instructions::report_float_value::handler(ctx, reported_float_value)
     }
 
+    pub fn register_module(ctx: Context<RegisterModule>, policy_seed: u64) -> Result<()> {
+        instructions::register_module::handler(ctx, policy_seed)
+    }
+
+    pub fn sync_module_nav(ctx: Context<SyncModuleNav>) -> Result<()> {
+        instructions::sync_module_nav::handler(ctx)
+    }
+
+    pub fn deploy_to_mock_module(ctx: Context<DeployToMockModule>, amount: u64) -> Result<()> {
+        instructions::deploy_to_mock_module::handler(ctx, amount)
+    }
+
+    pub fn recall_from_mock_module(ctx: Context<RecallFromMockModule>, amount: u64) -> Result<()> {
+        instructions::recall_from_mock_module::handler(ctx, amount)
+    }
+
     pub fn manager_deposit(ctx: Context<ManagerDeposit>, amount: u64) -> Result<()> {
         instructions::manager_deposit::handler(ctx, amount)
     }

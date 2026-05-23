@@ -43,7 +43,11 @@ pub fn handler(ctx: Context<ReportFloatValue>, reported_float_value: u64) -> Res
 
     let old_float_value = ctx.accounts.vault.float_outstanding;
     let vault_underlying_balance = ctx.accounts.vault_token_account.amount;
-    let total_assets_after = total_assets(vault_underlying_balance, reported_float_value)?;
+    let total_assets_after = total_assets(
+        vault_underlying_balance,
+        reported_float_value,
+        ctx.accounts.vault.modules_nav_total,
+    )?;
 
     ctx.accounts.vault.float_outstanding = reported_float_value;
 

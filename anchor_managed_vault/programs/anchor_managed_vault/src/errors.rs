@@ -68,6 +68,16 @@ pub enum VaultError {
     #[msg("Vault is in emergency shutdown mode.")]
     VaultShutdown,
 
+    // Module registry rules.
+    #[msg("Maximum number of modules reached.")]
+    MaxModulesReached,
+
+    #[msg("Invalid module entry.")]
+    InvalidModule,
+
+    #[msg("Invalid module state account.")]
+    InvalidModuleState,
+
     #[msg("User does not have enough shares.")]
     InsufficientShares,
 }

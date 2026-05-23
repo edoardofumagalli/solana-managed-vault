@@ -1,12 +1,12 @@
 [package]
-name = "anchor_managed_vault"
+name = "mock_yield_module"
 version = "0.1.0"
 description = "Created with Anchor"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "anchor_managed_vault"
+name = "mock_yield_module"
 
 [features]
 default = []
@@ -14,16 +14,15 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "mock_yield_module/idl-build"]
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 anchor-debug = []
 custom-heap = []
 custom-panic = []
 
 
 [dependencies]
-anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
+anchor-lang = "0.32.1"
 anchor-spl = "0.32.1"
-mock_yield_module = { path = "../mock_yield_module", features = ["cpi"] }
 
 
 [lints.rust]
