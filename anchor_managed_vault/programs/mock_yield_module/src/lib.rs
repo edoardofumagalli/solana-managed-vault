@@ -25,4 +25,8 @@ pub mod mock_yield_module {
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         instructions::deposit::handler(ctx, amount)
     }
+
+    pub fn return_capital(ctx: Context<ReturnCapital>, amount: u64) -> Result<()> {
+        instructions::return_capital::handler(ctx, amount)
+    }
 }

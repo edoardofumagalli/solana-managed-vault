@@ -78,6 +78,10 @@ pub mod anchor_managed_vault {
         instructions::deploy_to_mock_module::handler(ctx, amount)
     }
 
+    pub fn recall_from_mock_module(ctx: Context<RecallFromMockModule>, amount: u64) -> Result<()> {
+        instructions::recall_from_mock_module::handler(ctx, amount)
+    }
+
     pub fn manager_deposit(ctx: Context<ManagerDeposit>, amount: u64) -> Result<()> {
         instructions::manager_deposit::handler(ctx, amount)
     }

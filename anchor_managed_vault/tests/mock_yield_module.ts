@@ -313,6 +313,125 @@ describe("mock_yield_module", () => {
         assert.equal(state.cachedNav.toString(), "0");
     });
 
+
+
+    it("returns capital from the module to the vault and updates cached NAV", async () => {
+        const setup = await setupMockModule();
+        const depositAmount = 250_000;
+        const returnAmount = 100_000;
+        const vaultTokenAccount = await createTokenAccount(
+            setup.underlyingMint,
+            setup.vault
+        );
+
+        await mintTokens(setup.underlyingMint, vaultTokenAccount, depositAmount);
+
+        await mockYieldModuleProgram.methods
+            .deposit(new anchor.BN(depositAmount))
+            .accountsPartial({
+                vaultAuthority: setup.vault,
+                mockModuleState: setup.mockModuleState,
+                underlyingMint: setup.underlyingMint,
+                vaultTokenAccount,
+                moduleTokenAccount: setup.moduleTokenAccount,
+                tokenProgram: TOKEN_PROGRAM_ID,
+            })
+            .signers([setup.vaultAuthority])
+            .rpc();
+
+        await mockYieldModuleProgram.methods
+            .returnCapital(new anchor.BN(returnAmount))
+            .accountsPartial({
+                vaultAuthority: setup.vault,
+                mockModuleState: setup.mockModuleState,
+                mockModuleAuthority: setup.mockModuleAuthority,
+                underlyingMint: setup.underlyingMint,
+                moduleTokenAccount: setup.moduleTokenAccount,
+                vaultTokenAccount,
+                tokenProgram: TOKEN_PROGRAM_ID,
+            })
+            .rpc();
+
+        const state = await mockYieldModuleProgram.account.mockModuleState.fetch(
+            setup.mockModuleState
+        );
+        const vaultTokenState = await fetchTokenAccount(vaultTokenAccount);
+        const moduleTokenState = await fetchTokenAccount(
+            setup.moduleTokenAccount
+        );
+        const expectedRemainingNav = depositAmount - returnAmount;
+
+        assert.equal(vaultTokenState.amount.toString(), returnAmount.toString());
+        assert.equal(
+            moduleTokenState.amount.toString(),
+            expectedRemainingNav.toString()
+        );
+        assert.equal(state.cachedNav.toString(), expectedRemainingNav.toString());
+        assert.isTrue(state.lastUpdatedSlot.gt(new anchor.BN(0)));
+    });
+
+    it("rejects return_capital with zero amount", async () => {
+        const setup = await setupMockModule();
+        const vaultTokenAccount = await createTokenAccount(
+            setup.underlyingMint,
+            setup.vault
+        );
+
+        try {
+            await mockYieldModuleProgram.methods
+                .returnCapital(new anchor.BN(0))
+                .accountsPartial({
+                    vaultAuthority: setup.vault,
+                    mockModuleState: setup.mockModuleState,
+                    mockModuleAuthority: setup.mockModuleAuthority,
+                    underlyingMint: setup.underlyingMint,
+                    moduleTokenAccount: setup.moduleTokenAccount,
+                    vaultTokenAccount,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                })
+                .rpc();
+
+            assert.fail("Expected return_capital to reject zero amount");
+        } catch (error) {
+            assert.include(String(error), "InvalidAmount");
+        }
+    });
+
+    it("rejects return_capital above module liquidity", async () => {
+        const setup = await setupMockModule();
+        const vaultTokenAccount = await createTokenAccount(
+            setup.underlyingMint,
+            setup.vault
+        );
+
+        try {
+            await mockYieldModuleProgram.methods
+                .returnCapital(new anchor.BN(1))
+                .accountsPartial({
+                    vaultAuthority: setup.vault,
+                    mockModuleState: setup.mockModuleState,
+                    mockModuleAuthority: setup.mockModuleAuthority,
+                    underlyingMint: setup.underlyingMint,
+                    moduleTokenAccount: setup.moduleTokenAccount,
+                    vaultTokenAccount,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                })
+                .rpc();
+
+            assert.fail("Expected return_capital to reject insufficient liquidity");
+        } catch (error) {
+            assert.include(String(error), "InsufficientLiquidity");
+        }
+
+        const vaultTokenState = await fetchTokenAccount(vaultTokenAccount);
+        const moduleTokenState = await fetchTokenAccount(
+            setup.moduleTokenAccount
+        );
+
+        assert.equal(vaultTokenState.amount.toString(), "0");
+        assert.equal(moduleTokenState.amount.toString(), "0");
+    });
+
     it("rejects calculate_nav with a different token account", async () => {
         const setup = await setupMockModule();
         const wrongTokenAccount = await createTokenAccount(

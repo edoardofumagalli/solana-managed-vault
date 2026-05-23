@@ -164,3 +164,16 @@ pub struct ModuleCapitalDeployedEvent {
     pub amount: u64,
     pub deployed_value_after: u64,
 }
+
+#[event]
+pub struct ModuleCapitalRecalledEvent {
+    pub vault: Pubkey,
+    pub manager: Pubkey,
+    pub module_entry: Pubkey,
+    pub module_program_id: Pubkey,
+    pub module_state: Pubkey,
+    pub vault_token_account: Pubkey,
+    pub module_token_account: Pubkey,
+    pub amount: u64,
+    pub module_cached_nav_after: u64,
+}
