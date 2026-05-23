@@ -182,7 +182,7 @@ Use these seeds:
 | PDA | Seeds | Purpose |
 |---|---|---|
 | `mock_module_state` | `[b"mock_module_state", vault]` | Stores standardized module NAV state. |
-| `mock_module_authority` | `[b"mock_module_authority", mock_module_state]` | Owns the module token account and signs withdrawals. |
+| `mock_module_authority` | `[b"mock_module_authority", mock_module_state]` | Owns the module token account and signs capital returns back to the vault. |
 
 The module token account can be the ATA for:
 
@@ -226,21 +226,21 @@ Called by the vault program through CPI.
 
 Accounts:
 
-- `vault_authority`: signer, must be the vault PDA
-- `vault`: unchecked account, must match `module_state.vault`
+- `vault_authority`: signer, must match `mock_module_state.vault`
 - `mock_module_state`: mutable
 - `underlying_mint`
-- `vault_token_account`: source token account, authority is vault PDA
+- `vault_token_account`: source token account, authority is `vault_authority`
 - `module_token_account`: destination token account, owned by module authority
 - `token_program`
 
 Behavior:
 
 1. Require `amount > 0`.
-2. Require `vault_authority.key() == module_state.vault`.
+2. Require `vault_authority.key() == mock_module_state.vault`.
 3. Transfer `amount` from vault token account to module token account.
-4. Set `cached_nav = module_token_account.amount + amount` or reload/read post-transfer balance if needed.
-5. Update `last_updated_slot`.
+4. Reload/read the post-transfer module token account balance.
+5. Set `cached_nav = module_token_account.amount`.
+6. Update `last_updated_slot`.
 
 This proves the important CPI chain:
 
@@ -252,29 +252,29 @@ manager signs transaction
         -> mock module CPIs to SPL Token program
 ```
 
-### `withdraw`
+### `return_capital`
 
 Called by the vault program through CPI.
 
 Accounts:
 
-- `vault_authority`: signer, must be the vault PDA
-- `vault`: unchecked account, must match `module_state.vault`
+- `vault_authority`: unchecked destination authority, must match `mock_module_state.vault`
 - `mock_module_state`: mutable
-- `mock_module_authority`: PDA signer inside the module
+- `mock_module_authority`: PDA that owns the module token account and signs the transfer out
 - `underlying_mint`
-- `module_token_account`: source token account
-- `vault_token_account`: destination token account
+- `module_token_account`: source token account, authority is `mock_module_authority`
+- `vault_token_account`: destination token account, authority is `vault_authority`
 - `token_program`
 
 Behavior:
 
 1. Require `amount > 0`.
-2. Require `vault_authority.key() == module_state.vault`.
+2. Require `vault_authority.key() == mock_module_state.vault`.
 3. Require module token balance is enough.
 4. Transfer `amount` from module token account back to vault token account, signed by `mock_module_authority`.
-5. Decrease `cached_nav` by `amount` or reload/read post-transfer balance if needed.
-6. Update `last_updated_slot`.
+5. Reload/read the post-transfer module token account balance.
+6. Set `cached_nav = module_token_account.amount`.
+7. Update `last_updated_slot`.
 
 ### `calculate_nav`
 
@@ -346,8 +346,9 @@ Behavior:
 5. Compute current total assets including `modules_nav_total`.
 6. Enforce deployed-value cap.
 7. CPI into `mock_yield_module::deposit`, signing with the vault PDA seeds.
-8. Update the related `ModuleEntry.cached_nav` and the vault aggregate `modules_nav_total` from module state.
-9. Emit event.
+8. The mock module transfers tokens into its module token account and updates `MockModuleState.cached_nav`.
+9. The vault does not directly update `ModuleEntry.cached_nav` or `vault.modules_nav_total` here; those are updated by `sync_module_nav`.
+10. Emit event.
 
 ### `recall_from_mock_module`
 
@@ -359,14 +360,21 @@ Behavior:
 
 1. Require manager is authorized.
 2. Require `amount > 0`.
-3. CPI into `mock_yield_module::withdraw`, signing with the vault PDA seeds.
-4. Update the related `ModuleEntry.cached_nav` and the vault aggregate `modules_nav_total` from module state.
-5. Emit event.
+3. Require the module token account has enough liquidity.
+4. CPI into `mock_yield_module::return_capital`.
+5. The vault PDA is the destination token-account authority, but it does not need to sign to receive tokens.
+6. The mock module signs the outgoing transfer with `mock_module_authority` and updates `MockModuleState.cached_nav`.
+7. The vault does not directly update `ModuleEntry.cached_nav` or `vault.modules_nav_total` here; those are updated by `sync_module_nav`.
+8. Emit event.
 
 Shutdown rule:
 
 - `deploy_to_mock_module` should be blocked during shutdown.
 - `recall_from_mock_module` should remain allowed during shutdown, because it brings assets back.
+
+Accounting note:
+
+`deploy_to_mock_module` and `recall_from_mock_module` move real tokens and update the mock module's own `cached_nav`. The vault aggregate accounting is intentionally updated by `sync_module_nav`, which copies the module header value into `ModuleEntry.cached_nav` and then updates `vault.modules_nav_total`.
 
 ### `sync_module_nav`
 
@@ -409,48 +417,59 @@ pub struct ModuleRegisteredEvent {
 }
 
 #[event]
-pub struct MockModuleDeployedEvent {
+pub struct ModuleCapitalDeployedEvent {
     pub vault: Pubkey,
     pub manager: Pubkey,
+    pub module_entry: Pubkey,
+    pub module_program_id: Pubkey,
     pub module_state: Pubkey,
+    pub vault_token_account: Pubkey,
+    pub module_token_account: Pubkey,
     pub amount: u64,
-    pub cached_nav: u64,
-    pub modules_nav_total: u64,
-    pub total_assets: u64,
+    pub deployed_value_after: u64,
 }
 
 #[event]
-pub struct MockModuleRecalledEvent {
+pub struct ModuleCapitalRecalledEvent {
     pub vault: Pubkey,
     pub manager: Pubkey,
+    pub module_entry: Pubkey,
+    pub module_program_id: Pubkey,
     pub module_state: Pubkey,
+    pub vault_token_account: Pubkey,
+    pub module_token_account: Pubkey,
     pub amount: u64,
-    pub cached_nav: u64,
-    pub modules_nav_total: u64,
-    pub total_assets: u64,
+    pub module_cached_nav_after: u64,
 }
 
 #[event]
 pub struct ModuleNavSyncedEvent {
     pub vault: Pubkey,
+    pub cranker: Pubkey,
+    pub module_entry: Pubkey,
+    pub module_program_id: Pubkey,
     pub module_state: Pubkey,
     pub old_cached_nav: u64,
     pub new_cached_nav: u64,
     pub modules_nav_total: u64,
-    pub total_assets: u64,
+    pub slot: u64,
 }
 ```
 
-The mock module can also emit:
+The mock module also emits:
 
 ```rust
 #[event]
-pub struct MockModuleNavCalculatedEvent {
-    pub vault: Pubkey,
-    pub module_state: Pubkey,
-    pub cached_nav: u64,
-    pub slot: u64,
-}
+pub struct MockModuleInitializedEvent { ... }
+
+#[event]
+pub struct MockModuleNavCalculatedEvent { ... }
+
+#[event]
+pub struct MockModuleDepositedEvent { ... }
+
+#[event]
+pub struct MockModuleCapitalReturnedEvent { ... }
 ```
 
 ## Test Plan
@@ -461,16 +480,18 @@ Add focused tests for the module path.
 
 1. Initializes `MockModuleState` with the standard layout.
 2. `calculate_nav` sets `cached_nav` to the module token account balance.
-3. Direct `deposit` fails without the vault PDA signer.
-4. Direct `withdraw` fails without the vault PDA signer.
+3. Direct `deposit` succeeds only when the configured vault authority signs.
+4. Direct `return_capital` transfers capital back to the configured vault token account using `mock_module_authority` as signer.
+5. Zero-amount and insufficient-liquidity cases fail.
 
 ### Vault integration tests
 
 1. Manager deploys assets to mock module.
    - vault token balance decreases;
    - module token balance increases;
-   - `vault.modules_nav_total` increases;
-   - total assets remain constant.
+   - mock module `cached_nav` increases;
+   - `vault.modules_nav_total` increases after `sync_module_nav`;
+   - total assets are restored to the full value after NAV sync.
 
 2. Deploy respects max deployed cap.
    - `float_outstanding + modules_nav_total + amount` cannot exceed cap.
@@ -485,7 +506,8 @@ Add focused tests for the module path.
 4. Recall moves assets back to the vault.
    - module token balance decreases;
    - vault token balance increases;
-   - `vault.modules_nav_total` decreases.
+   - mock module `cached_nav` decreases;
+   - `vault.modules_nav_total` decreases after `sync_module_nav`.
 
 5. Shutdown behavior.
    - deploy is blocked after shutdown;
@@ -508,7 +530,7 @@ Add focused tests for the module path.
 7. Update math helpers to include `modules_nav_total` in total assets.
 8. Update existing vault instructions/tests affected by total assets.
 9. Implement vault `register_module`.
-10. Implement mock module `deposit` and `withdraw`.
+10. Implement mock module `deposit` and `return_capital`.
 11. Implement vault `deploy_to_mock_module`, `recall_from_mock_module`, and `sync_module_nav`.
 12. Add focused integration tests.
 13. Run full regression.
