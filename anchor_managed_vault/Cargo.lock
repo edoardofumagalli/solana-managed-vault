@@ -915,6 +915,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kamino_yield_module"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+]
+
+[[package]]
 name = "keccak"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
