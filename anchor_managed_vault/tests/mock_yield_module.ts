@@ -151,22 +151,18 @@ describe("mock_yield_module", () => {
     it("deposits tokens into the module and updates cached NAV", async () => {
         const setup = await setupMockModule();
         const depositAmount = 250_000;
-        const vaultTokenAccount = await createTokenAccount(
+        await mintTokens(
             setup.underlyingMint,
-            setup.vault
+            setup.moduleTokenAccount,
+            depositAmount
         );
-
-        await mintTokens(setup.underlyingMint, vaultTokenAccount, depositAmount);
 
         await mockYieldModuleProgram.methods
             .deposit(new anchor.BN(depositAmount))
             .accountsPartial({
                 vaultAuthority: setup.vault,
                 mockModuleState: setup.mockModuleState,
-                underlyingMint: setup.underlyingMint,
-                vaultTokenAccount,
                 moduleTokenAccount: setup.moduleTokenAccount,
-                tokenProgram: TOKEN_PROGRAM_ID,
             })
             .signers([setup.vaultAuthority])
             .rpc();
@@ -174,12 +170,10 @@ describe("mock_yield_module", () => {
         const state = await mockYieldModuleProgram.account.mockModuleState.fetch(
             setup.mockModuleState
         );
-        const vaultTokenState = await fetchTokenAccount(vaultTokenAccount);
         const moduleTokenState = await fetchTokenAccount(
             setup.moduleTokenAccount
         );
 
-        assert.equal(vaultTokenState.amount.toString(), "0");
         assert.equal(
             moduleTokenState.amount.toString(),
             depositAmount.toString()
@@ -190,23 +184,13 @@ describe("mock_yield_module", () => {
 
     it("rejects deposit with zero amount", async () => {
         const setup = await setupMockModule();
-        const vaultTokenAccount = await createTokenAccount(
-            setup.underlyingMint,
-            setup.vault
-        );
-
-        await mintTokens(setup.underlyingMint, vaultTokenAccount, 1_000);
-
         try {
             await mockYieldModuleProgram.methods
                 .deposit(new anchor.BN(0))
                 .accountsPartial({
                     vaultAuthority: setup.vault,
                     mockModuleState: setup.mockModuleState,
-                    underlyingMint: setup.underlyingMint,
-                    vaultTokenAccount,
                     moduleTokenAccount: setup.moduleTokenAccount,
-                    tokenProgram: TOKEN_PROGRAM_ID,
                 })
                 .signers([setup.vaultAuthority])
                 .rpc();
@@ -230,27 +214,13 @@ describe("mock_yield_module", () => {
     it("rejects deposit from an unauthorized vault authority", async () => {
         const setup = await setupMockModule();
         const wrongVaultAuthority = Keypair.generate();
-        const wrongVaultTokenAccount = await createTokenAccount(
-            setup.underlyingMint,
-            wrongVaultAuthority.publicKey
-        );
-
-        await mintTokens(
-            setup.underlyingMint,
-            wrongVaultTokenAccount,
-            10_000
-        );
-
         try {
             await mockYieldModuleProgram.methods
                 .deposit(new anchor.BN(10_000))
                 .accountsPartial({
                     vaultAuthority: wrongVaultAuthority.publicKey,
                     mockModuleState: setup.mockModuleState,
-                    underlyingMint: setup.underlyingMint,
-                    vaultTokenAccount: wrongVaultTokenAccount,
                     moduleTokenAccount: setup.moduleTokenAccount,
-                    tokenProgram: TOKEN_PROGRAM_ID,
                 })
                 .signers([wrongVaultAuthority])
                 .rpc();
@@ -268,16 +238,10 @@ describe("mock_yield_module", () => {
 
     it("rejects deposit into a different module token account", async () => {
         const setup = await setupMockModule();
-        const vaultTokenAccount = await createTokenAccount(
-            setup.underlyingMint,
-            setup.vault
-        );
         const wrongModuleTokenAccount = await createTokenAccount(
             setup.underlyingMint,
             manager
         );
-
-        await mintTokens(setup.underlyingMint, vaultTokenAccount, 10_000);
 
         try {
             await mockYieldModuleProgram.methods
@@ -285,10 +249,7 @@ describe("mock_yield_module", () => {
                 .accountsPartial({
                     vaultAuthority: setup.vault,
                     mockModuleState: setup.mockModuleState,
-                    underlyingMint: setup.underlyingMint,
-                    vaultTokenAccount,
                     moduleTokenAccount: wrongModuleTokenAccount,
-                    tokenProgram: TOKEN_PROGRAM_ID,
                 })
                 .signers([setup.vaultAuthority])
                 .rpc();
@@ -324,17 +285,18 @@ describe("mock_yield_module", () => {
             setup.vault
         );
 
-        await mintTokens(setup.underlyingMint, vaultTokenAccount, depositAmount);
+        await mintTokens(
+            setup.underlyingMint,
+            setup.moduleTokenAccount,
+            depositAmount
+        );
 
         await mockYieldModuleProgram.methods
             .deposit(new anchor.BN(depositAmount))
             .accountsPartial({
                 vaultAuthority: setup.vault,
                 mockModuleState: setup.mockModuleState,
-                underlyingMint: setup.underlyingMint,
-                vaultTokenAccount,
                 moduleTokenAccount: setup.moduleTokenAccount,
-                tokenProgram: TOKEN_PROGRAM_ID,
             })
             .signers([setup.vaultAuthority])
             .rpc();

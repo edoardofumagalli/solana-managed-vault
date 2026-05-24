@@ -10,6 +10,7 @@ import {
 import {
     ASSOCIATED_TOKEN_PROGRAM_ID,
     TOKEN_PROGRAM_ID,
+    getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 
 import { MockYieldModule } from "../target/types/mock_yield_module";
@@ -21,6 +22,8 @@ import {
     program,
 } from "./helpers/setup";
 import {
+    deriveMockModuleAuthorityPda,
+    deriveMockModuleStatePda,
     deriveModuleEntryPda,
     deriveShareMintPda,
     deriveVaultPda,
@@ -38,6 +41,16 @@ type VaultSetup = {
     shareMint: PublicKey;
     vaultTokenAccount: PublicKey;
     emergencyAdmin: Keypair;
+};
+
+type MockModuleSetup = {
+    mockModuleState: PublicKey;
+    mockModuleAuthority: PublicKey;
+    moduleTokenAccount: PublicKey;
+};
+
+type RegisteredModuleSetup = MockModuleSetup & {
+    moduleEntry: PublicKey;
 };
 
 async function fundUser(user: Keypair): Promise<void> {
@@ -91,10 +104,55 @@ async function setupVault(): Promise<VaultSetup> {
     };
 }
 
+async function setupMockModule(
+    vault: PublicKey,
+    underlyingMint: PublicKey
+): Promise<MockModuleSetup> {
+    const [mockModuleState] = deriveMockModuleStatePda(
+        vault,
+        mockYieldModuleProgram.programId
+    );
+    const [mockModuleAuthority] = deriveMockModuleAuthorityPda(
+        mockModuleState,
+        mockYieldModuleProgram.programId
+    );
+    const moduleTokenAccount = getAssociatedTokenAddressSync(
+        underlyingMint,
+        mockModuleAuthority,
+        true,
+        TOKEN_PROGRAM_ID
+    );
+
+    await mockYieldModuleProgram.methods
+        .initialize()
+        .accountsPartial({
+            payer: manager,
+            vault,
+            underlyingMint,
+            mockModuleState,
+            mockModuleAuthority,
+            moduleTokenAccount,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+    return {
+        mockModuleState,
+        mockModuleAuthority,
+        moduleTokenAccount,
+    };
+}
+
 async function registerModule(
     setup: VaultSetup,
     policySeed: anchor.BN | number = 1
-): Promise<PublicKey> {
+): Promise<RegisteredModuleSetup> {
+    const mockModuleSetup = await setupMockModule(
+        setup.vault,
+        setup.underlyingMint
+    );
     const [moduleEntry] = deriveModuleEntryPda(
         setup.vault,
         mockYieldModuleProgram.programId,
@@ -107,22 +165,27 @@ async function registerModule(
             manager,
             vault: setup.vault,
             moduleEntry,
+            moduleState: mockModuleSetup.mockModuleState,
+            moduleUnderlyingTokenAccount: mockModuleSetup.moduleTokenAccount,
             moduleProgram: mockYieldModuleProgram.programId,
             systemProgram: SystemProgram.programId,
         })
         .rpc();
 
-    return moduleEntry;
+    return {
+        ...mockModuleSetup,
+        moduleEntry,
+    };
 }
 
 describe("register_module", () => {
     it("registers an external module policy", async () => {
         const setup = await setupVault();
         const policySeed = new anchor.BN(1);
-        const moduleEntry = await registerModule(setup, policySeed);
+        const registeredModule = await registerModule(setup, policySeed);
 
         const moduleEntryState = await program.account.moduleEntry.fetch(
-            moduleEntry
+            registeredModule.moduleEntry
         );
         const vaultState = await program.account.vault.fetch(setup.vault);
 
@@ -137,6 +200,14 @@ describe("register_module", () => {
             "module program mismatch"
         );
         assert.equal(moduleEntryState.policySeed.toString(), policySeed.toString());
+        assertPublicKeyEquals(
+            moduleEntryState.moduleState,
+            registeredModule.mockModuleState
+        );
+        assertPublicKeyEquals(
+            moduleEntryState.moduleUnderlyingTokenAccount,
+            registeredModule.moduleTokenAccount
+        );
         assert.equal(moduleEntryState.cachedNav.toString(), "0");
         assert.equal(moduleEntryState.navLastUpdatedSlot.toString(), "0");
         assert.isTrue(moduleEntryState.isActive);
@@ -154,6 +225,11 @@ describe("register_module", () => {
             policySeed
         );
 
+        const mockModuleSetup = await setupMockModule(
+            setup.vault,
+            setup.underlyingMint
+        );
+
         await fundUser(nonManager);
 
         try {
@@ -163,6 +239,8 @@ describe("register_module", () => {
                     manager: nonManager.publicKey,
                     vault: setup.vault,
                     moduleEntry,
+                    moduleState: mockModuleSetup.mockModuleState,
+                    moduleUnderlyingTokenAccount: mockModuleSetup.moduleTokenAccount,
                     moduleProgram: mockYieldModuleProgram.programId,
                     systemProgram: SystemProgram.programId,
                 })
@@ -181,7 +259,7 @@ describe("register_module", () => {
     it("rejects registering the same module policy twice", async () => {
         const setup = await setupVault();
         const policySeed = new anchor.BN(3);
-        const moduleEntry = await registerModule(setup, policySeed);
+        const registeredModule = await registerModule(setup, policySeed);
 
         try {
             await program.methods
@@ -189,7 +267,9 @@ describe("register_module", () => {
                 .accountsPartial({
                     manager,
                     vault: setup.vault,
-                    moduleEntry,
+                    moduleEntry: registeredModule.moduleEntry,
+                    moduleState: registeredModule.mockModuleState,
+                    moduleUnderlyingTokenAccount: registeredModule.moduleTokenAccount,
                     moduleProgram: mockYieldModuleProgram.programId,
                     systemProgram: SystemProgram.programId,
                 })
@@ -213,6 +293,11 @@ describe("register_module", () => {
             policySeed
         );
 
+        const mockModuleSetup = await setupMockModule(
+            setup.vault,
+            setup.underlyingMint
+        );
+
         await program.methods
             .activateEmergencyShutdown()
             .accountsPartial({
@@ -229,6 +314,8 @@ describe("register_module", () => {
                     manager,
                     vault: setup.vault,
                     moduleEntry,
+                    moduleState: mockModuleSetup.mockModuleState,
+                    moduleUnderlyingTokenAccount: mockModuleSetup.moduleTokenAccount,
                     moduleProgram: mockYieldModuleProgram.programId,
                     systemProgram: SystemProgram.programId,
                 })

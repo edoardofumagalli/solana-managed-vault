@@ -135,6 +135,8 @@ pub struct ModuleRegisteredEvent {
     pub manager: Pubkey,
     pub module_entry: Pubkey,
     pub module_program_id: Pubkey,
+    pub module_state: Pubkey,
+    pub module_underlying_token_account: Pubkey,
     pub policy_seed: u64,
     pub module_count: u8,
 }
@@ -151,7 +153,6 @@ pub struct ModuleNavSyncedEvent {
     pub slot: u64,
 }
 
-
 #[event]
 pub struct ModuleCapitalDeployedEvent {
     pub vault: Pubkey,
@@ -163,6 +164,10 @@ pub struct ModuleCapitalDeployedEvent {
     pub module_token_account: Pubkey,
     pub amount: u64,
     pub deployed_value_after: u64,
+    pub old_cached_nav: u64,
+    pub new_cached_nav: u64,
+    pub modules_nav_total: u64,
+    pub slot: u64,
 }
 
 #[event]

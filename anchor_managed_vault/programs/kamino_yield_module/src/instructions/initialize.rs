@@ -10,7 +10,6 @@ use crate::{
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct InitializeArgs {
-    pub acting_manager: Pubkey,
     pub lending_market: Pubkey,
     pub kamino_reserve: Pubkey,
     pub module_type: u8,
@@ -64,7 +63,6 @@ pub fn handler(ctx: Context<Initialize>, args: InitializeArgs) -> Result<()> {
     ctx.accounts.module_config.set_inner(ModuleConfig {
         bump: ctx.bumps.module_config,
         vault: ctx.accounts.vault.key(),
-        acting_manager: args.acting_manager,
         lending_market: args.lending_market,
         kamino_reserve: args.kamino_reserve,
         module_type: args.module_type,

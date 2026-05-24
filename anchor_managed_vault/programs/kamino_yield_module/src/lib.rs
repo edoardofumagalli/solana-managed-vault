@@ -1,5 +1,6 @@
 pub mod constants;
 pub mod errors;
+pub mod events;
 pub mod instructions;
 pub mod state;
 pub mod utils;
@@ -8,6 +9,7 @@ use anchor_lang::prelude::*;
 
 pub use constants::*;
 pub use errors::*;
+pub use events::*;
 pub use instructions::*;
 pub use state::*;
 pub use utils::*;
@@ -24,5 +26,9 @@ pub mod kamino_yield_module {
 
     pub fn calculate_nav(ctx: Context<CalculateNav>) -> Result<()> {
         calculate_nav::handler(ctx)
+    }
+
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        deposit::handler(ctx, amount)
     }
 }

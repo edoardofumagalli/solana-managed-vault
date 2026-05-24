@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token_interface::TokenAccount;
 
 use crate::{
     constants::{MAX_MODULES_PER_VAULT, MODULE_ENTRY_SEED, VAULT_SEED},
@@ -35,6 +36,18 @@ pub struct RegisterModule<'info> {
     )]
     pub module_entry: Box<Account<'info, ModuleEntry>>,
 
+    /// CHECK: Generic external module state. It must be owned by the registered module program.
+    #[account(
+        constraint = module_state.owner == &module_program.key() @ VaultError::InvalidModuleState,
+    )]
+    pub module_state: UncheckedAccount<'info>,
+
+    #[account(
+        constraint = module_underlying_token_account.mint == vault.underlying_mint
+            @ VaultError::InvalidModuleState,
+    )]
+    pub module_underlying_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
     /// CHECK: Generic external module program. Anchor cannot know its concrete
     /// type, but it must be an executable program account.
     #[account(executable)]
@@ -48,6 +61,8 @@ pub fn handler(ctx: Context<RegisterModule>, policy_seed: u64) -> Result<()> {
     let manager_key = ctx.accounts.manager.key();
     let module_entry_key = ctx.accounts.module_entry.key();
     let module_program_id = ctx.accounts.module_program.key();
+    let module_state_key = ctx.accounts.module_state.key();
+    let module_underlying_token_account_key = ctx.accounts.module_underlying_token_account.key();
 
     let vault = &mut ctx.accounts.vault;
 
@@ -61,6 +76,8 @@ pub fn handler(ctx: Context<RegisterModule>, policy_seed: u64) -> Result<()> {
         vault: vault_key,
         module_program_id,
         policy_seed,
+        module_state: module_state_key,
+        module_underlying_token_account: module_underlying_token_account_key,
         cached_nav: 0,
         nav_last_updated_slot: 0,
         is_active: true,
@@ -78,6 +95,8 @@ pub fn handler(ctx: Context<RegisterModule>, policy_seed: u64) -> Result<()> {
         module_entry: module_entry_key,
         module_program_id,
         policy_seed,
+        module_state: module_state_key,
+        module_underlying_token_account: module_underlying_token_account_key,
         module_count: vault.module_count,
     });
 

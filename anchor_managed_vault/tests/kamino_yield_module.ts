@@ -108,14 +108,12 @@ type InitializeSetup = {
     moduleConfigBump: number;
     kaminoModuleState: PublicKey;
     kaminoModuleStateBump: number;
-    actingManager: PublicKey;
     lendingMarket: PublicKey;
     kaminoReserve: PublicKey;
 };
 
 function setupInitializeAccounts(): InitializeSetup {
     const vault = Keypair.generate().publicKey;
-    const actingManager = Keypair.generate().publicKey;
     const lendingMarket = Keypair.generate().publicKey;
     const kaminoReserve = Keypair.generate().publicKey;
 
@@ -134,7 +132,6 @@ function setupInitializeAccounts(): InitializeSetup {
         moduleConfigBump,
         kaminoModuleState,
         kaminoModuleStateBump,
-        actingManager,
         lendingMarket,
         kaminoReserve,
     };
@@ -147,7 +144,6 @@ async function initializeKaminoModule(
 ): Promise<void> {
     await kaminoYieldModuleProgram.methods
         .initialize({
-            actingManager: setup.actingManager,
             lendingMarket: setup.lendingMarket,
             kaminoReserve: setup.kaminoReserve,
             moduleType,
@@ -180,7 +176,6 @@ describe("kamino_yield_module", () => {
 
         assert.equal(moduleConfig.bump, setup.moduleConfigBump);
         assertPublicKeyEquals(moduleConfig.vault, setup.vault);
-        assertPublicKeyEquals(moduleConfig.actingManager, setup.actingManager);
         assertPublicKeyEquals(moduleConfig.lendingMarket, setup.lendingMarket);
         assertPublicKeyEquals(moduleConfig.kaminoReserve, setup.kaminoReserve);
         assert.equal(moduleConfig.moduleType, MODULE_TYPE_TOKEN);
@@ -358,6 +353,12 @@ describe("kamino_yield_module", () => {
 
         await initializeKaminoModule(setup, MODULE_TYPE_TOKEN);
 
+        const moduleUnderlyingTokenAccount = await createTokenAccount(
+            vaultSetup.underlyingMint,
+            setup.kaminoModuleState,
+            true
+        );
+
         const policySeed = new anchor.BN(7);
         const [moduleEntry] = deriveModuleEntryPda(
             setup.vault,
@@ -371,6 +372,8 @@ describe("kamino_yield_module", () => {
                 manager,
                 vault: setup.vault,
                 moduleEntry,
+                moduleState: setup.kaminoModuleState,
+                moduleUnderlyingTokenAccount,
                 moduleProgram: kaminoYieldModuleProgram.programId,
                 systemProgram: SystemProgram.programId,
             })
@@ -405,6 +408,11 @@ describe("kamino_yield_module", () => {
             kaminoYieldModuleProgram.programId
         );
         assert.equal(moduleEntryState.policySeed.toString(), policySeed.toString());
+        assertPublicKeyEquals(moduleEntryState.moduleState, setup.kaminoModuleState);
+        assertPublicKeyEquals(
+            moduleEntryState.moduleUnderlyingTokenAccount,
+            moduleUnderlyingTokenAccount
+        );
         assert.equal(moduleEntryState.cachedNav.toString(), "0");
         assert.isTrue(moduleEntryState.navLastUpdatedSlot.gt(new anchor.BN(0)));
         assert.isTrue(moduleEntryState.isActive);

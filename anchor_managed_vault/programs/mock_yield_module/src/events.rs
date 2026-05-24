@@ -20,7 +20,6 @@ pub struct MockModuleNavCalculatedEvent {
 pub struct MockModuleDepositedEvent {
     pub vault: Pubkey,
     pub module_state: Pubkey,
-    pub vault_token_account: Pubkey,
     pub module_token_account: Pubkey,
     pub amount: u64,
     pub cached_nav: u64,

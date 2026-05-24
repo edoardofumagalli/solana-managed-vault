@@ -98,17 +98,27 @@ The goal is to compile and test:
 
 ### Milestone 2: Real NAV Reads
 
-Add Kamino/Klend reserve-account parsing.
+Status: completed in the NAV milestone.
 
-The module should compute NAV from on-chain Kamino state using raw byte offsets instead of full account deserialization.
+The module now computes NAV from Kamino-compatible state using raw byte offsets instead of full account deserialization.
+
+Implemented behavior:
+
+1. Token-mode NAV reads the vault collateral token account amount.
+2. Obligation-mode NAV scans the obligation deposit slots for the configured reserve.
+3. Reserve exchange-rate components are read from raw reserve bytes.
+4. `cached_nav` and `last_updated_slot` are updated by permissionless `calculate_nav`.
+5. The vault can sync the standardized module header through `sync_module_nav`.
 
 This follows the prototype because Kamino/Klend reserve and obligation accounts are large. Fully deserializing them inside a Solana program can create stack-pressure problems.
 
 ### Milestone 3: Capital Movement
 
-Only after NAV sync works, add real capital movement.
+Next focus: design the first real deposit path into Kamino before implementing it.
 
-Potential instructions:
+The next design step should answer how vault capital moves from the managed vault into the Kamino adapter and then into Kamino/Klend.
+
+Potential instruction names:
 
 ```text
 deposit
@@ -122,7 +132,9 @@ deploy
 recall
 ```
 
-This milestone will require real CPI calls into Kamino/Klend and more account constraints. It should be treated as a separate design step.
+For the first capital-movement milestone, start with token-mode deposit only. Obligation-mode deposit and recall are more account-heavy and should come after the simpler token-mode path is understood.
+
+This milestone will require real CPI calls into Kamino/Klend and more account constraints. It should be treated as a separate design step before writing implementation code.
 
 ## Standard Module Header
 
@@ -184,7 +196,6 @@ Suggested state:
 pub struct ModuleConfig {
     pub bump: u8,
     pub vault: Pubkey,
-    pub acting_manager: Pubkey,
     pub lending_market: Pubkey,
     pub kamino_reserve: Pubkey,
     pub module_type: u8,
@@ -198,7 +209,6 @@ Purpose of each field:
 |---|---|
 | `bump` | Allows the module PDA to be re-derived and signed if needed. |
 | `vault` | Binds this config to one vault. |
-| `acting_manager` | Future authority allowed to operate Kamino-specific actions. |
 | `lending_market` | Kamino lending market this adapter targets. |
 | `kamino_reserve` | Reserve used for NAV calculation and future deposits. |
 | `module_type` | Selects token-based vs obligation-based accounting. |
@@ -227,7 +237,6 @@ Suggested args:
 
 ```rust
 pub struct InitializeArgs {
-    pub acting_manager: Pubkey,
     pub lending_market: Pubkey,
     pub kamino_reserve: Pubkey,
     pub module_type: u8,
@@ -326,7 +335,9 @@ vault total_assets includes Kamino NAV
 
 Important: `sync_module_nav` does not CPI into Kamino. It only reads the standardized header from the Kamino module state account.
 
-## Capital Movement Design Placeholder
+## Next Design Step: Deposit Into Kamino
+
+The NAV adapter milestone is complete enough to move to capital movement design.
 
 The mock module currently has vault-side instructions:
 
@@ -335,43 +346,316 @@ deploy_to_mock_module
 recall_from_mock_module
 ```
 
-For Kamino, we should not immediately duplicate this as final architecture.
+For Kamino, do not jump directly into implementation. First design the deposit path and decide where each responsibility belongs.
 
-Possible options:
+The first deposit design should cover:
 
-### Option A: Specific vault instructions
+1. Which instruction initiates the move from vault idle liquidity into Kamino.
+2. Whether the instruction lives in the vault program, the Kamino module, or both through CPI.
+3. Which authority signs the transfer out of the vault token account.
+4. Which token account receives Kamino collateral tokens.
+5. Which Kamino/Klend CPI instruction is used for token-mode deposit.
+6. Which accounts are required by that CPI.
+7. How `float_outstanding`, `modules_nav_total`, and `cached_nav` should change after deposit.
+8. Whether deposit should immediately update NAV or require a later crank.
+
+Recommended first slice: token-mode deposit.
+
+Reason: token-mode is the closest shape to the mock module. The vault transfers underlying into Kamino, receives collateral/kTokens into a vault-controlled collateral token account, and then `calculate_nav` prices those collateral tokens using the reserve exchange rate.
+
+Delay obligation-mode deposit for a later slice. Obligation-mode requires more Kamino accounts, a configured obligation, and a more complex CPI path.
+
+### Chosen Direction: Option B, Generic Vault/Module Dispatch
+
+Choose Option B as the target architecture.
+
+Reason: after Kamino, the vault may integrate with other adapters such as Jupiter. If we add one vault instruction per protocol, the vault quickly becomes protocol-aware and harder to maintain. The vault should stay responsible for vault accounting and authorization, while each module owns protocol-specific CPI logic.
+
+The intended separation is:
+
+| Layer | Responsibility |
+|---|---|
+| Vault program | Shares, user deposits/withdrawals, manager authorization, float cap, module registry, exact capital movement out of the vault, aggregate NAV accounting. |
+| Module program | Strategy-specific accounts, CPI into external protocols, module-local custody, `cached_nav` reporting. |
+| External protocol | Kamino, Jupiter, or any future protocol used by a module. |
+
+## Generic Deposit Design
+
+The first generic capital movement instruction should be a vault-side instruction with a protocol-agnostic name, for example:
 
 ```text
-deploy_to_kamino_module
-recall_from_kamino_module
+deploy_to_module(amount)
 ```
 
-Pros:
+This instruction should not import `kamino_yield_module`, `mock_yield_module`, or any future Jupiter module as a Rust dependency.
 
-- easier to learn;
-- explicit account lists;
-- mirrors current mock implementation.
+Instead, it should work against a registered `ModuleEntry` and a standard module interface.
 
-Cons:
+### Safety Principle
 
-- vault starts knowing about Kamino;
-- less generic as more modules are added.
+Do not give an arbitrary module program signer power over the vault token account.
 
-### Option B: Generic vault/module dispatch later
+A tempting design is:
 
-Keep protocol-specific capital movement in adapter programs and make the vault expose more generic authorization primitives.
+```text
+vault deploy_to_module
+  CPI into module deposit
+    module receives vault PDA signer
+    module transfers from vault_token_account
+```
 
-Pros:
+This is dangerous because a malicious or buggy module could use the vault signer to transfer more than the requested amount.
 
-- cleaner architecture;
-- vault stays more protocol-agnostic.
+Preferred design:
 
-Cons:
+```text
+vault deploy_to_module
+  vault transfers exactly amount from vault_token_account
+  into a module-owned underlying token account
+  module then uses its own authority for protocol-specific CPI
+```
 
-- harder to implement correctly;
-- requires a stronger adapter interface design.
+This keeps the vault in control of the exact amount leaving the vault. The module receives custody only over the amount deliberately deployed to it.
 
-Recommendation: milestone 1 should avoid this choice. First prove NAV adapter compatibility. Then decide capital movement with the mentor after seeing exactly which Kamino accounts are required.
+### Required Module Accounts
+
+To support generic capital movement, `ModuleEntry` stores the module program id plus the concrete module accounts that the vault is allowed to interact with:
+
+```rust
+pub module_state: Pubkey,
+pub module_underlying_token_account: Pubkey,
+```
+
+`module_state` makes `sync_module_nav` and capital movement bind to the same registered module instance. A sync for a different state account is rejected even if that account is owned by the same module program.
+
+`module_underlying_token_account` is the module-owned staging account for the vault's underlying mint. The vault can safely transfer an exact amount into this account without knowing whether the module will later use Kamino, Jupiter, or another protocol.
+
+Registration validates that:
+
+1. `module_state` is owned by the registered module program;
+2. `module_underlying_token_account` uses the same underlying mint as the vault.
+
+Optional later field:
+
+```rust
+pub module_authority: Pubkey,
+```
+
+For now we do not store `module_authority` because different modules may derive or use authority accounts differently. The vault only needs to know the exact destination token account for deployed underlying.
+
+For Kamino token-mode, the module may also have a separate collateral/kToken account. That account remains Kamino-module-specific and does not need to be stored in the vault's generic `ModuleEntry` unless later recall flows require it.
+
+### Proposed Deposit Flow
+
+Single-instruction target flow:
+
+```text
+manager calls vault.deploy_to_module(amount)
+
+vault:
+  validates manager
+  validates vault is not shutdown
+  validates ModuleEntry is active
+  validates vault idle liquidity >= amount
+  validates post-deploy cap using float_outstanding + modules_nav_total + amount
+  transfers exactly amount from vault_token_account to module_underlying_token_account
+  CPI-calls the registered module's standard deposit instruction
+  reads the standardized module_state header after CPI
+  updates ModuleEntry.cached_nav and vault.modules_nav_total
+```
+
+Module:
+
+```text
+module.deposit(amount)
+  validates module state
+  validates module_underlying_token_account
+  uses module authority, not vault authority
+  performs protocol-specific CPI
+  updates module_state.cached_nav and last_updated_slot
+```
+
+For Kamino token-mode specifically:
+
+```text
+kamino_yield_module.deposit(amount)
+  source liquidity: module_underlying_token_account
+  source authority: kamino module authority PDA
+  destination collateral: module/vault collateral token account
+  external CPI: Kamino/KLend deposit-reserve-liquidity style instruction
+  after CPI: update cached_nav using collateral balance and reserve exchange rate
+```
+
+### Standard Module Interface
+
+Each yield module should expose a standard instruction name and argument shape for capital deployment, for example:
+
+```text
+deposit(amount: u64)
+```
+
+The vault can call this standard interface through raw CPI / `remaining_accounts`, without importing the concrete module crate.
+
+Common account rule for module `deposit`:
+
+```text
+vault_authority                 signer PDA controlled by the vault program
+module_specific_accounts...      supplied through remaining_accounts
+```
+
+`vault_authority` is the only account injected by the vault as a universal prefix. It proves that the module was called by the vault program, not directly by an arbitrary client. The module should validate that this signer matches the vault recorded in its config/state.
+
+`module_state` and `module_underlying_token_account` are still mandatory for the generic vault/module contract, but their exact position is defined by each module's Anchor account context. The vault validates that both registered accounts are present in `remaining_accounts` before invoking the module.
+
+Important safety rule: the vault must not pass `vault_token_account` or any other vault-owned source account to the module CPI. The module receives only the already-staged `module_underlying_token_account`, so even a buggy module cannot pull more than the exact amount the vault transferred first.
+
+Protocol-specific accounts come through `remaining_accounts`. For Kamino these include module config/state, reserve, lending market, collateral mint/account, lending market authority, reserve liquidity supply, and the Klend program. For Jupiter these would be swap route accounts instead.
+
+### Kamino `remaining_accounts` Order
+
+`vault.deploy_to_module` builds a raw CPI into the registered module's standard `deposit(amount)` instruction.
+
+Important: the vault instruction injects the vault PDA as the first CPI account:
+
+```text
+0. vault_authority                 signer, readonly, added by vault.deploy_to_module
+```
+
+Therefore the client/test/playground must not include `vault_authority` in `remaining_accounts`. The `remaining_accounts` list starts from the second account expected by `kamino_yield_module.deposit`.
+
+For Kamino token-mode deposit, pass `remaining_accounts` in exactly this order:
+
+| Index in `remaining_accounts` | Kamino deposit account | Writable | Signer | Purpose |
+|---:|---|---|---|---|
+| `0` | `module_config` | no | no | Stores Kamino adapter configuration and binds the module to the vault. |
+| `1` | `kamino_module_state` | yes | no | Module PDA state; signs the Klend CPI internally and stores updated `cached_nav`. |
+| `2` | `kamino_reserve` | yes | no | Klend reserve being deposited into; must match module state. |
+| `3` | `lending_market` | no | no | Klend lending market configured for this module. |
+| `4` | `lending_market_authority` | no | no | Klend PDA authority for the lending market. |
+| `5` | `reserve_liquidity_mint` | no | no | Underlying/liquidity mint accepted by the reserve. |
+| `6` | `reserve_liquidity_supply` | yes | no | Reserve liquidity supply token account receiving deposited liquidity. |
+| `7` | `reserve_collateral_mint` | yes | no | Collateral/kToken mint used by Klend. |
+| `8` | `module_underlying_token_account` | yes | no | Registered module staging account already funded by the vault before CPI. |
+| `9` | `vault_collateral_account` | yes | no | Module-owned collateral/kToken account that receives minted collateral. |
+| `10` | `token_program` | no | no | SPL Token program used by collateral accounts. |
+| `11` | `liquidity_token_program` | no | no | SPL Token program used by liquidity accounts. |
+| `12` | `klend_program` | no | no | Kamino/Klend program. |
+| `13` | `instruction_sysvar` | no | no | Instructions sysvar required by the Klend deposit instruction. |
+
+Full CPI account order seen by `kamino_yield_module.deposit`:
+
+```text
+vault_authority,
+module_config,
+kamino_module_state,
+kamino_reserve,
+lending_market,
+lending_market_authority,
+reserve_liquidity_mint,
+reserve_liquidity_supply,
+reserve_collateral_mint,
+module_underlying_token_account,
+vault_collateral_account,
+token_program,
+liquidity_token_program,
+klend_program,
+instruction_sysvar
+```
+
+The two accounts that must match `ModuleEntry` are:
+
+```text
+kamino_module_state == module_entry.module_state
+module_underlying_token_account == module_entry.module_underlying_token_account
+```
+
+This order is part of the generic module interface contract. If the account order in `kamino_yield_module.deposit` changes, any client/test/playground building `remaining_accounts` must be updated at the same time.
+
+### NAV Update Rule
+
+After a successful module deposit, the module should update its own `cached_nav`.
+
+Then the vault instruction should read the standard header from `module_state` and update:
+
+```text
+module_entry.cached_nav
+vault.modules_nav_total
+```
+
+This avoids a temporary state where assets have left the vault token account but are not yet represented in `modules_nav_total`.
+
+Target implementation:
+
+```text
+vault.deploy_to_module(amount, remaining_accounts...)
+```
+
+`deploy_to_module` should be the single manager-facing entrypoint for deploying capital into any registered module.
+
+The vault instruction should:
+
+1. validate manager authorization, shutdown state, module registration, idle liquidity, and float cap;
+2. transfer exactly `amount` from `vault_token_account` into the registered `module_underlying_token_account`;
+3. CPI-call the registered module program's standard `deposit(amount)` instruction;
+4. pass the vault PDA as `vault_authority` signer for module authentication only;
+5. pass protocol-specific module accounts through `remaining_accounts`;
+6. reload/read the standardized module state header after CPI;
+7. update `module_entry.cached_nav` and `vault.modules_nav_total` in the same instruction.
+
+The module instruction should:
+
+1. reject direct calls that do not include the vault PDA as signer;
+2. validate its own module state/config and staging token account;
+3. use its own module authority to spend from `module_underlying_token_account`;
+4. perform protocol-specific CPI, such as Kamino/Klend deposit;
+5. update `module_state.cached_nav` and `last_updated_slot` before returning.
+
+This removes the intermediate client sequence:
+
+```text
+vault.deploy_to_module(amount)
+kamino_yield_module.deposit(amount)
+vault.sync_module_nav()
+```
+
+`sync_module_nav` should remain as a permissionless fallback/crank instruction, but the happy path should not require it after a successful deploy.
+
+### Accounting Rule
+
+Deploying capital to an on-chain module should not increase `float_outstanding`.
+
+Reason: `float_outstanding` represents manager-controlled/off-vault reported value. Kamino/Jupiter module value should be represented by `modules_nav_total` through module NAV sync.
+
+The relevant deployed-value cap should continue to reason about:
+
+```text
+float_outstanding + modules_nav_total + newly_deployed_amount
+```
+
+Pre-deploy cap checks can use `newly_deployed_amount`. After the module updates NAV, the vault should store the actual module NAV reported by the module.
+
+### Implementation Refactor Plan
+
+Implement the generic pattern in this order:
+
+1. Refactor `kamino_yield_module.deposit` so it can be called by the vault PDA signer instead of directly relying on a client/manager signer.
+2. Refactor `deploy_to_module` to build a raw CPI to the registered module program and pass module-specific accounts through `remaining_accounts`.
+3. Make `deploy_to_module` read the standardized module header after CPI and update `module_entry.cached_nav` plus `vault.modules_nav_total` atomically.
+4. Add focused Kamino pre-CPI tests where possible, then add a devnet/local-fixture playground for the real Klend CPI path.
+5. Optionally adapt the mock module later as a generic harness if we want a fully local test for the same interface without Kamino accounts.
+
+This keeps the current branch focused on the Kamino adapter while still moving toward the generic module pattern. The mock module is useful as a future test harness, but it is not required to complete the Kamino deposit refactor.
+
+### Design Tradeoff
+
+This design is more work than `deploy_to_kamino_module`, but it gives us a better path for Jupiter and future adapters.
+
+The price is that we must define and respect a small module interface contract:
+
+1. standard state header;
+2. standard capital deployment instruction shape;
+3. module-owned underlying token account;
+4. module-updated `cached_nav` after protocol-specific work.
 
 ## Dependency Strategy
 
@@ -448,11 +732,22 @@ This is the main technical uncertainty for the next milestone after NAV reportin
 
 ### Milestone 2 tests
 
-1. `calculate_nav` returns zero when position amount is zero.
-2. `calculate_nav` updates NAV for token type using mocked reserve bytes.
-3. `calculate_nav` updates NAV for obligation type using mocked obligation bytes.
-4. Invalid reserve/account owner is rejected.
-5. Invalid obligation for state type is rejected.
+Status: partially completed.
+
+Implemented:
+
+1. `calculate_nav` returns zero when token position amount is zero.
+2. `calculate_nav` returns zero when obligation position amount is zero.
+3. Vault can register and sync the Kamino module NAV.
+
+Still useful later:
+
+1. `calculate_nav` updates NAV for token type using mocked reserve bytes.
+2. `calculate_nav` updates NAV for obligation type using mocked obligation bytes.
+3. Invalid reserve/account owner is rejected.
+4. Invalid obligation for state type is rejected.
+
+These non-zero raw-byte tests likely need either Rust-side parser tests, validator fixtures with custom account data, or a devnet/local fixture strategy.
 
 ### Later integration tests
 
@@ -474,11 +769,11 @@ This is the main technical uncertainty for the next milestone after NAV reportin
 9. Add initialize/register/sync tests.
 10. Add `calculate_nav` skeleton.
 11. Add raw byte readers and NAV tests.
+12. Design token-mode deposit into Kamino.
+13. Implement token-mode deposit only after the deposit account model is clear.
 
 ## Open Questions
 
 1. Should Kamino module PDAs include `policy_seed` now, or stay one-per-vault for the first implementation?
-2. Should `acting_manager` be the same as `vault.manager`, or can it be a different operational authority?
-3. Should the first capital movement instruction live in the vault program or in the Kamino module only?
-4. Which Kamino/Klend markets and accounts should be used for a devnet integration test?
-5. Which `klend` crate version is compatible with our Anchor `0.32.1` workspace?
+2. Which real Kamino/Klend market, reserve, and token accounts should be used for a devnet end-to-end playground?
+3. How should the future recall/withdraw path from Kamino be shaped, and what account order will it require?
