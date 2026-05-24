@@ -20,10 +20,15 @@ pub struct KaminoModuleState {
     pub last_updated_slot: u64,
 
     // Kamino-specific fields.
+    // Reserve is the concrete Kamino lending pool this module tracks, e.g. a USDC reserve.
     pub kamino_reserve: Pubkey,
+    // Lending market groups reserves under one Kamino market configuration and authority model.
     pub lending_market: Pubkey,
+    // Selects how the position is represented: collateral token balance or obligation state.
     pub module_type: u8,
+    // Obligation stores deposited collateral for obligation-based Kamino positions.
     pub obligation: Pubkey,
+    // Marks that initialize ran successfully and the state can be used by calculate_nav.
     pub is_initialized: bool,
 }
 

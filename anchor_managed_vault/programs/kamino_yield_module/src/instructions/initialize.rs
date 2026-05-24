@@ -2,8 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::{
     constants::{
-        KAMINO_MODULE_STATE_SEED, MODULE_CONFIG_SEED, MODULE_TYPE_OBLIGATION,
-        MODULE_TYPE_TOKEN,
+        KAMINO_MODULE_STATE_SEED, MODULE_CONFIG_SEED, MODULE_TYPE_OBLIGATION, MODULE_TYPE_TOKEN,
     },
     errors::KaminoYieldModuleError,
     state::{KaminoModuleState, ModuleConfig},

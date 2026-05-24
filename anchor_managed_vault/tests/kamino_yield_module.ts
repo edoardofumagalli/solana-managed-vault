@@ -1,14 +1,22 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { assert } from "chai";
-import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
+import {
+    Keypair,
+    PublicKey,
+    sendAndConfirmTransaction,
+    SystemProgram,
+    Transaction,
+} from "@solana/web3.js";
 import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
 import { KaminoYieldModule } from "../target/types/kamino_yield_module";
 import {
     DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS,
     DEFAULT_MAX_FLOAT_BPS,
+    connection,
     manager,
+    payer,
     program,
 } from "./helpers/setup";
 import {
@@ -20,7 +28,7 @@ import {
     deriveVaultTokenAccount,
 } from "./helpers/pda";
 import { assertPublicKeyEquals } from "./helpers/assertions";
-import { createUnderlyingMint } from "./helpers/token";
+import { createTokenAccount, createUnderlyingMint } from "./helpers/token";
 
 const kaminoYieldModuleProgram = anchor.workspace
     .kaminoYieldModule as Program<KaminoYieldModule>;
@@ -28,7 +36,28 @@ const kaminoYieldModuleProgram = anchor.workspace
 const MODULE_TYPE_TOKEN = 0;
 const MODULE_TYPE_OBLIGATION = 1;
 const INVALID_MODULE_TYPE = 99;
+const OBLIGATION_ACCOUNT_SPACE = 96 + 8 * 88;
+const KLEND_PROGRAM_ID = new PublicKey(
+    "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD"
+);
 
+async function createKlendOwnedAccount(space = 8): Promise<PublicKey> {
+    const account = Keypair.generate();
+    const lamports = await connection.getMinimumBalanceForRentExemption(space);
+    const transaction = new Transaction().add(
+        SystemProgram.createAccount({
+            fromPubkey: manager,
+            newAccountPubkey: account.publicKey,
+            lamports,
+            space,
+            programId: KLEND_PROGRAM_ID,
+        })
+    );
+
+    await sendAndConfirmTransaction(connection, transaction, [payer, account]);
+
+    return account.publicKey;
+}
 
 type VaultSetup = {
     underlyingMint: PublicKey;
@@ -216,6 +245,95 @@ describe("kamino_yield_module", () => {
         } catch (error) {
             assert.include(String(error), "InvalidObligation");
         }
+    });
+
+    it("calculates zero NAV when token position is empty", async () => {
+        const setup = {
+            ...setupInitializeAccounts(),
+            kaminoReserve: await createKlendOwnedAccount(),
+        };
+
+        await initializeKaminoModule(setup, MODULE_TYPE_TOKEN);
+
+        const collateralMint = await createUnderlyingMint();
+        const vaultCollateralAccount = await createTokenAccount(
+            collateralMint,
+            setup.vault
+        );
+        const stateBefore =
+            await kaminoYieldModuleProgram.account.kaminoModuleState.fetch(
+                setup.kaminoModuleState
+            );
+
+        await kaminoYieldModuleProgram.methods
+            .calculateNav()
+            .accountsPartial({
+                payer: manager,
+                vault: setup.vault,
+                kaminoModuleState: setup.kaminoModuleState,
+                kaminoReserve: setup.kaminoReserve,
+                vaultCollateralAccount,
+                obligation: setup.kaminoReserve,
+            })
+            .rpc();
+
+        const stateAfter =
+            await kaminoYieldModuleProgram.account.kaminoModuleState.fetch(
+                setup.kaminoModuleState
+            );
+
+        assert.equal(stateAfter.cachedNav.toString(), "0");
+        assert.isTrue(
+            stateAfter.lastUpdatedSlot.gte(stateBefore.lastUpdatedSlot)
+        );
+    });
+
+    it("calculates zero NAV when obligation position is empty", async () => {
+        const obligation = await createKlendOwnedAccount(
+            OBLIGATION_ACCOUNT_SPACE
+        );
+        const setup = {
+            ...setupInitializeAccounts(),
+            kaminoReserve: await createKlendOwnedAccount(),
+        };
+
+        await initializeKaminoModule(
+            setup,
+            MODULE_TYPE_OBLIGATION,
+            obligation
+        );
+
+        const collateralMint = await createUnderlyingMint();
+        const vaultCollateralAccount = await createTokenAccount(
+            collateralMint,
+            setup.vault
+        );
+        const stateBefore =
+            await kaminoYieldModuleProgram.account.kaminoModuleState.fetch(
+                setup.kaminoModuleState
+            );
+
+        await kaminoYieldModuleProgram.methods
+            .calculateNav()
+            .accountsPartial({
+                payer: manager,
+                vault: setup.vault,
+                kaminoModuleState: setup.kaminoModuleState,
+                kaminoReserve: setup.kaminoReserve,
+                vaultCollateralAccount,
+                obligation,
+            })
+            .rpc();
+
+        const stateAfter =
+            await kaminoYieldModuleProgram.account.kaminoModuleState.fetch(
+                setup.kaminoModuleState
+            );
+
+        assert.equal(stateAfter.cachedNav.toString(), "0");
+        assert.isTrue(
+            stateAfter.lastUpdatedSlot.gte(stateBefore.lastUpdatedSlot)
+        );
     });
 
     it("registers and syncs Kamino module NAV through the vault", async () => {
