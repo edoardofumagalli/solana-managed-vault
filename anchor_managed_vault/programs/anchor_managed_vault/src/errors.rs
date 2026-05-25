@@ -35,6 +35,9 @@ pub enum VaultError {
     #[msg("Vault does not have enough liquid assets.")]
     InsufficientLiquidity,
 
+    #[msg("Module returned less liquidity than requested.")]
+    InsufficientReturnedLiquidity,
+
     // Withdrawal queue rules.
     #[msg("Withdrawal ticket is not the next ticket in FIFO order.")]
     TicketOutOfOrder,

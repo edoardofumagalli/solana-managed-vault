@@ -107,7 +107,7 @@ async function setupMockModule(
     );
 
     await mockYieldModuleProgram.methods
-        .initialize()
+        .initialize(program.programId)
         .accountsPartial({
             payer: manager,
             vault,
@@ -130,7 +130,9 @@ async function setupMockModule(
 
 async function registerModule(
     vault: PublicKey,
-    policySeed: anchor.BN
+    policySeed: anchor.BN,
+    moduleState: PublicKey,
+    moduleUnderlyingTokenAccount: PublicKey
 ): Promise<PublicKey> {
     const [moduleEntry] = deriveModuleEntryPda(
         vault,
@@ -144,6 +146,8 @@ async function registerModule(
             manager,
             vault,
             moduleEntry,
+            moduleState,
+            moduleUnderlyingTokenAccount,
             moduleProgram: mockYieldModuleProgram.programId,
             systemProgram: SystemProgram.programId,
         })
@@ -160,7 +164,12 @@ async function setupRegisteredModule(
         vaultSetup.vault,
         vaultSetup.underlyingMint
     );
-    const moduleEntry = await registerModule(vaultSetup.vault, policySeed);
+    const moduleEntry = await registerModule(
+        vaultSetup.vault,
+        policySeed,
+        mockModuleSetup.mockModuleState,
+        mockModuleSetup.moduleTokenAccount
+    );
 
     return {
         ...vaultSetup,
@@ -232,6 +241,37 @@ async function deployToMockModule(
     await builder.rpc();
 }
 
+async function deployToGenericModule(
+    setup: RegisteredModuleSetup,
+    amount: number
+): Promise<void> {
+    await program.methods
+        .deployToModule(new anchor.BN(amount))
+        .accountsPartial({
+            manager,
+            vault: setup.vault,
+            moduleEntry: setup.moduleEntry,
+            underlyingMint: setup.underlyingMint,
+            vaultTokenAccount: setup.vaultTokenAccount,
+            moduleUnderlyingTokenAccount: setup.moduleTokenAccount,
+            moduleProgram: mockYieldModuleProgram.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .remainingAccounts([
+            {
+                pubkey: setup.mockModuleState,
+                isWritable: true,
+                isSigner: false,
+            },
+            {
+                pubkey: setup.moduleTokenAccount,
+                isWritable: true,
+                isSigner: false,
+            },
+        ])
+        .rpc();
+}
+
 
 async function recallFromMockModule(
     setup: RegisteredModuleSetup,
@@ -276,6 +316,38 @@ async function syncModuleNav(setup: RegisteredModuleSetup): Promise<void> {
 }
 
 describe("deploy_to_mock_module", () => {
+    it("deploys vault capital through the generic module interface and updates NAV atomically", async () => {
+        const setup = await setupRegisteredModule(new anchor.BN(11));
+        const vaultDepositAmount = 1_000_000;
+        const deployAmount = 200_000;
+
+        await depositIntoVault(setup, vaultDepositAmount);
+        await deployToGenericModule(setup, deployAmount);
+
+        const vaultTokenAccount = await fetchTokenAccount(
+            setup.vaultTokenAccount
+        );
+        const moduleTokenAccount = await fetchTokenAccount(
+            setup.moduleTokenAccount
+        );
+        const mockModuleState = await mockYieldModuleProgram.account.mockModuleState.fetch(
+            setup.mockModuleState
+        );
+        const moduleEntryState = await program.account.moduleEntry.fetch(
+            setup.moduleEntry
+        );
+        const vaultState = await program.account.vault.fetch(setup.vault);
+
+        assert.equal(
+            vaultTokenAccount.amount.toString(),
+            (vaultDepositAmount - deployAmount).toString()
+        );
+        assert.equal(moduleTokenAccount.amount.toString(), deployAmount.toString());
+        assert.equal(mockModuleState.cachedNav.toString(), deployAmount.toString());
+        assert.equal(moduleEntryState.cachedNav.toString(), deployAmount.toString());
+        assert.equal(vaultState.modulesNavTotal.toString(), deployAmount.toString());
+    });
+
     it("deploys vault capital into the mock module and syncs NAV", async () => {
         const setup = await setupRegisteredModule();
         const vaultDepositAmount = 1_000_000;

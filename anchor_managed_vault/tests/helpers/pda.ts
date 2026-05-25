@@ -15,8 +15,11 @@ const USER_VAULT_POSITION_SEED = Buffer.from("user_vault_position");
 const ESCROW_SHARE_SEED = Buffer.from("escrow_share");
 const MANAGER_WITHDRAW_REQUEST_SEED = Buffer.from("manager_withdraw_request");
 const MODULE_ENTRY_SEED = Buffer.from("module_entry");
+const MODULE_CALL_AUTHORITY_SEED = Buffer.from("module_call_authority");
 const MOCK_MODULE_STATE_SEED = Buffer.from("mock_module_state");
 const MOCK_MODULE_AUTHORITY_SEED = Buffer.from("mock_module_authority");
+const KAMINO_MODULE_CONFIG_SEED = Buffer.from("module_config");
+const KAMINO_MODULE_STATE_SEED = Buffer.from("kamino_module_state");
 
 // Derives the main vault state PDA for a given underlying mint.
 // A PDA depends on both its seeds and the program id, so the same seeds under a
@@ -136,6 +139,17 @@ export function deriveModuleEntryPda(
     );
 }
 
+// Derives the non-custodial PDA used only to authenticate vault-initiated
+// CPIs into external modules. This PDA must not own vault funds or mint authority.
+export function deriveModuleCallAuthorityPda(
+    vault: PublicKey
+): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+        [MODULE_CALL_AUTHORITY_SEED, vault.toBuffer()],
+        program.programId
+    );
+}
+
 // Derives the token account PDA that escrows shares while a withdrawal ticket is pending.
 // The escrow account authority is the withdraw ticket PDA, not the user.
 export function deriveEscrowShareTokenAccountPda(
@@ -169,5 +183,29 @@ export function deriveMockModuleAuthorityPda(
     return PublicKey.findProgramAddressSync(
         [MOCK_MODULE_AUTHORITY_SEED, mockModuleState.toBuffer()],
         mockYieldModuleProgramId
+    );
+}
+
+// Derives the Kamino module config PDA. This PDA belongs to the
+// kamino_yield_module program, not to the vault program.
+export function deriveKaminoModuleConfigPda(
+    vault: PublicKey,
+    kaminoYieldModuleProgramId: PublicKey
+): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+        [KAMINO_MODULE_CONFIG_SEED, vault.toBuffer()],
+        kaminoYieldModuleProgramId
+    );
+}
+
+// Derives the Kamino module state PDA containing the standardized NAV header
+// read by the vault's sync_module_nav instruction.
+export function deriveKaminoModuleStatePda(
+    vault: PublicKey,
+    kaminoYieldModuleProgramId: PublicKey
+): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+        [KAMINO_MODULE_STATE_SEED, vault.toBuffer()],
+        kaminoYieldModuleProgramId
     );
 }

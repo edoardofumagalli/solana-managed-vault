@@ -39,6 +39,7 @@ pub struct SyncModuleNav<'info> {
     /// minimum data length, standard vault field, and standard cached NAV field.
     #[account(
         constraint = module_state.owner == &module_entry.module_program_id @ VaultError::InvalidModuleState,
+        constraint = module_state.key() == module_entry.module_state @ VaultError::InvalidModuleState,
     )]
     pub module_state: UncheckedAccount<'info>,
 
@@ -56,10 +57,8 @@ pub fn handler(ctx: Context<SyncModuleNav>) -> Result<()> {
         VaultError::InvalidModuleState
     );
 
-    let module_vault = Pubkey::try_from(
-        &module_state_data[MODULE_VAULT_OFFSET..MODULE_NAV_OFFSET],
-    )
-    .map_err(|_| error!(VaultError::InvalidModuleState))?;
+    let module_vault = Pubkey::try_from(&module_state_data[MODULE_VAULT_OFFSET..MODULE_NAV_OFFSET])
+        .map_err(|_| error!(VaultError::InvalidModuleState))?;
 
     require_keys_eq!(
         module_vault,

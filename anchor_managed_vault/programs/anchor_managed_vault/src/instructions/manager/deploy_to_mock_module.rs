@@ -1,14 +1,12 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
+use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 use mock_yield_module::{
-    self,
-    cpi::accounts::Deposit as MockModuleDeposit,
-    program::MockYieldModule,
+    self, cpi::accounts::Deposit as MockModuleDeposit, program::MockYieldModule,
     state::MockModuleState,
 };
 
 use crate::{
-    constants::{MODULE_ENTRY_SEED, VAULT_SEED},
+    constants::{MODULE_CALL_AUTHORITY_SEED, MODULE_ENTRY_SEED, VAULT_SEED},
     errors::VaultError,
     events::ModuleCapitalDeployedEvent,
     math::{checked_float_cap, total_assets},
@@ -28,6 +26,14 @@ pub struct DeployToMockModule<'info> {
     )]
     pub vault: Account<'info, Vault>,
 
+    /// CHECK: Non-custodial PDA used only to authenticate vault-initiated CPIs
+    /// into external modules.
+    #[account(
+        seeds = [MODULE_CALL_AUTHORITY_SEED, vault.key().as_ref()],
+        bump,
+    )]
+    pub module_call_authority: UncheckedAccount<'info>,
+
     #[account(
         seeds = [
             MODULE_ENTRY_SEED,
@@ -39,6 +45,9 @@ pub struct DeployToMockModule<'info> {
         constraint = module_entry.vault == vault.key() @ VaultError::InvalidModule,
         constraint = module_entry.module_program_id == mock_yield_module_program.key() @ VaultError::InvalidModule,
         constraint = module_entry.is_active @ VaultError::InvalidModule,
+        constraint = module_entry.module_state == mock_module_state.key() @ VaultError::InvalidModule,
+        constraint = module_entry.module_underlying_token_account == module_token_account.key()
+            @ VaultError::InvalidModule,
     )]
     pub module_entry: Box<Account<'info, ModuleEntry>>,
 
@@ -76,14 +85,28 @@ pub struct DeployToMockModule<'info> {
 }
 
 impl<'info> DeployToMockModule<'info> {
+    fn transfer_underlying_to_module(&self, amount: u64, signer_seeds: &[&[&[u8]]]) -> Result<()> {
+        token_interface::transfer_checked(
+            CpiContext::new_with_signer(
+                self.token_program.to_account_info(),
+                TransferChecked {
+                    from: self.vault_token_account.to_account_info(),
+                    mint: self.underlying_mint.to_account_info(),
+                    to: self.module_token_account.to_account_info(),
+                    authority: self.vault.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            amount,
+            self.underlying_mint.decimals,
+        )
+    }
+
     fn deposit_to_mock_module(&self, amount: u64, signer_seeds: &[&[&[u8]]]) -> Result<()> {
         let cpi_accounts = MockModuleDeposit {
-            vault_authority: self.vault.to_account_info(),
+            module_call_authority: self.module_call_authority.to_account_info(),
             mock_module_state: self.mock_module_state.to_account_info(),
-            underlying_mint: self.underlying_mint.to_account_info(),
-            vault_token_account: self.vault_token_account.to_account_info(),
             module_token_account: self.module_token_account.to_account_info(),
-            token_program: self.token_program.to_account_info(),
         };
 
         mock_yield_module::cpi::deposit(
@@ -131,8 +154,19 @@ pub fn handler(ctx: Context<DeployToMockModule>, amount: u64) -> Result<()> {
     let vault_signer_seeds: &[&[&[u8]]] =
         &[&[VAULT_SEED, underlying_mint_key.as_ref(), &vault_bump]];
 
+    let vault_key = ctx.accounts.vault.key();
+    let module_call_authority_bump = [ctx.bumps.module_call_authority];
+    let module_call_authority_signer_seeds: &[&[&[u8]]] = &[&[
+        MODULE_CALL_AUTHORITY_SEED,
+        vault_key.as_ref(),
+        &module_call_authority_bump,
+    ]];
+
     ctx.accounts
-        .deposit_to_mock_module(amount, vault_signer_seeds)?;
+        .transfer_underlying_to_module(amount, vault_signer_seeds)?;
+    ctx.accounts
+        .deposit_to_mock_module(amount, module_call_authority_signer_seeds)?;
+    ctx.accounts.mock_module_state.reload()?;
 
     emit!(ModuleCapitalDeployedEvent {
         vault: ctx.accounts.vault.key(),
@@ -144,6 +178,10 @@ pub fn handler(ctx: Context<DeployToMockModule>, amount: u64) -> Result<()> {
         module_token_account: ctx.accounts.module_token_account.key(),
         amount,
         deployed_value_after,
+        old_cached_nav: ctx.accounts.module_entry.cached_nav,
+        new_cached_nav: ctx.accounts.mock_module_state.cached_nav,
+        modules_nav_total: ctx.accounts.vault.modules_nav_total,
+        slot: Clock::get()?.slot,
     });
 
     Ok(())

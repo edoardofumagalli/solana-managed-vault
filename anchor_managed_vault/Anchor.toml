@@ -7,6 +7,7 @@ skip-lint = false
 
 [programs.localnet]
 anchor_managed_vault = "AZjFTHJFBduuqPf1Gtado4r59rJ8zYqSNFPhiYFDUDzr"
+kamino_yield_module = "9YBJD5JjCfzLcPPSczbxM9QNUfV53fU9WGrpsoWCS2qm"
 mock_yield_module = "AFPVi8LB8iwXAGLr72AqaG6aH8pwVYzfR5ArCiiceBWe"
 
 [registry]

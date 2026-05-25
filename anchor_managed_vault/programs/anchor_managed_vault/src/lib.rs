@@ -78,7 +78,24 @@ pub mod anchor_managed_vault {
         instructions::deploy_to_mock_module::handler(ctx, amount)
     }
 
-    pub fn recall_from_mock_module(ctx: Context<RecallFromMockModule>, amount: u64) -> Result<()> {
+    pub fn deploy_to_module<'info>(
+        ctx: Context<'_, '_, '_, 'info, DeployToModule<'info>>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::deploy_to_module::handler(ctx, amount)
+    }
+
+    pub fn recall_from_module<'info>(
+        ctx: Context<'_, '_, '_, 'info, RecallFromModule<'info>>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::recall_from_module::handler(ctx, amount)
+    }
+
+    pub fn recall_from_mock_module(
+        ctx: Context<RecallFromMockModule>,
+        amount: u64,
+    ) -> Result<()> {
         instructions::recall_from_mock_module::handler(ctx, amount)
     }
 

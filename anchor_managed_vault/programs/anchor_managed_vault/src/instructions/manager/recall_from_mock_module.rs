@@ -1,9 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 use mock_yield_module::{
-    self,
-    cpi::accounts::ReturnCapital as MockModuleReturnCapital,
-    program::MockYieldModule,
+    self, cpi::accounts::ReturnCapital as MockModuleReturnCapital, program::MockYieldModule,
     state::MockModuleState,
 };
 
@@ -38,6 +36,9 @@ pub struct RecallFromMockModule<'info> {
         constraint = module_entry.vault == vault.key() @ VaultError::InvalidModule,
         constraint = module_entry.module_program_id == mock_yield_module_program.key() @ VaultError::InvalidModule,
         constraint = module_entry.is_active @ VaultError::InvalidModule,
+        constraint = module_entry.module_state == mock_module_state.key() @ VaultError::InvalidModule,
+        constraint = module_entry.module_underlying_token_account == module_token_account.key()
+            @ VaultError::InvalidModule,
     )]
     pub module_entry: Box<Account<'info, ModuleEntry>>,
 

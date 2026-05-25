@@ -102,7 +102,7 @@ async function setupMockModule(
     );
 
     await mockYieldModuleProgram.methods
-        .initialize()
+        .initialize(program.programId)
         .accountsPartial({
             payer: manager,
             vault,
@@ -125,7 +125,9 @@ async function setupMockModule(
 
 async function registerModule(
     vault: PublicKey,
-    policySeed: anchor.BN
+    policySeed: anchor.BN,
+    moduleState: PublicKey,
+    moduleUnderlyingTokenAccount: PublicKey
 ): Promise<PublicKey> {
     const [moduleEntry] = deriveModuleEntryPda(
         vault,
@@ -139,6 +141,8 @@ async function registerModule(
             manager,
             vault,
             moduleEntry,
+            moduleState,
+            moduleUnderlyingTokenAccount,
             moduleProgram: mockYieldModuleProgram.programId,
             systemProgram: SystemProgram.programId,
         })
@@ -155,7 +159,12 @@ async function setupRegisteredModule(
         vaultSetup.vault,
         vaultSetup.underlyingMint
     );
-    const moduleEntry = await registerModule(vaultSetup.vault, policySeed);
+    const moduleEntry = await registerModule(
+        vaultSetup.vault,
+        policySeed,
+        mockModuleSetup.mockModuleState,
+        mockModuleSetup.moduleTokenAccount
+    );
 
     return {
         ...vaultSetup,
