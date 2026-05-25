@@ -1,22 +1,24 @@
 use anchor_lang::{prelude::*, solana_program::program::invoke_signed};
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
-use klend_interface::instructions::deposit::{self, DepositReserveLiquidityAccounts};
+use klend_interface::instructions::withdraw::{self, RedeemReserveCollateralAccounts};
 
 use crate::{
     constants::{
         KAMINO_MODULE_STATE_SEED, KLEND_PROGRAM_ID, MODULE_CALL_AUTHORITY_SEED, MODULE_CONFIG_SEED,
     },
     errors::KaminoYieldModuleError,
-    events::KaminoModuleDepositedEvent,
+    events::KaminoModuleWithdrawnEvent,
     state::{KaminoModuleState, KaminoModuleType, ModuleConfig},
-    utils::{calculate_token_nav, read_exchange_rate_components},
+    utils::{
+        calculate_collateral_to_redeem_up, calculate_token_nav, read_exchange_rate_components,
+    },
 };
 
 #[derive(Accounts)]
-pub struct Deposit<'info> {
+pub struct Withdraw<'info> {
     /// Non-custodial PDA signer passed by the vault program CPI. This proves
-    /// that the call originated from the expected vault program, without using
-    /// the vault custody PDA as a generic module signer.
+    /// that the call originated from the expected vault program without giving
+    /// the module signer power over vault custody accounts.
     pub module_call_authority: Signer<'info>,
 
     #[account(
@@ -41,6 +43,14 @@ pub struct Deposit<'info> {
     )]
     pub kamino_module_state: Account<'info, KaminoModuleState>,
 
+    /// CHECK: The Kamino/Klend lending market account is owner-checked and matched to module state.
+    #[account(
+        owner = KLEND_PROGRAM_ID @ KaminoYieldModuleError::InvalidLendingMarket,
+        constraint = lending_market.key() == kamino_module_state.lending_market
+            @ KaminoYieldModuleError::InvalidLendingMarket,
+    )]
+    pub lending_market: UncheckedAccount<'info>,
+
     /// CHECK: The Kamino/Klend reserve account is owner-checked and matched to module state.
     #[account(
         mut,
@@ -49,14 +59,6 @@ pub struct Deposit<'info> {
             @ KaminoYieldModuleError::InvalidReserve,
     )]
     pub kamino_reserve: UncheckedAccount<'info>,
-
-    /// CHECK: The Kamino/Klend lending market account is owner-checked and matched to module state.
-    #[account(
-        owner = KLEND_PROGRAM_ID @ KaminoYieldModuleError::InvalidLendingMarket,
-        constraint = lending_market.key() == kamino_module_state.lending_market
-            @ KaminoYieldModuleError::InvalidLendingMarket,
-    )]
-    pub lending_market: UncheckedAccount<'info>,
 
     /// CHECK: Klend validates that this is the correct lending market authority PDA.
     pub lending_market_authority: UncheckedAccount<'info>,
@@ -68,13 +70,6 @@ pub struct Deposit<'info> {
 
     #[account(
         mut,
-        token::mint = reserve_liquidity_mint,
-        token::token_program = liquidity_token_program,
-    )]
-    pub reserve_liquidity_supply: Box<InterfaceAccount<'info, TokenAccount>>,
-
-    #[account(
-        mut,
         mint::token_program = token_program,
     )]
     pub reserve_collateral_mint: Box<InterfaceAccount<'info, Mint>>,
@@ -82,26 +77,28 @@ pub struct Deposit<'info> {
     #[account(
         mut,
         token::mint = reserve_liquidity_mint,
-        token::authority = kamino_module_state,
         token::token_program = liquidity_token_program,
-        constraint = module_underlying_token_account.mint == reserve_liquidity_mint.key()
-            @ KaminoYieldModuleError::InvalidTokenAccount,
-        constraint = module_underlying_token_account.owner == kamino_module_state.key()
-            @ KaminoYieldModuleError::InvalidTokenAccount,
     )]
-    pub module_underlying_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub reserve_liquidity_supply: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         token::mint = reserve_collateral_mint,
         token::authority = kamino_module_state,
         token::token_program = token_program,
-        constraint = vault_collateral_account.mint == reserve_collateral_mint.key()
-            @ KaminoYieldModuleError::InvalidCollateralAccount,
         constraint = vault_collateral_account.owner == kamino_module_state.key()
             @ KaminoYieldModuleError::InvalidCollateralAccount,
     )]
     pub vault_collateral_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        token::mint = reserve_liquidity_mint,
+        token::token_program = liquidity_token_program,
+        constraint = vault_token_account.owner == kamino_module_state.vault
+            @ KaminoYieldModuleError::InvalidTokenAccount,
+    )]
+    pub vault_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(address = anchor_spl::token::ID)]
     pub token_program: Interface<'info, TokenInterface>,
@@ -118,7 +115,7 @@ pub struct Deposit<'info> {
     pub instruction_sysvar: UncheckedAccount<'info>,
 }
 
-pub fn handler(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+pub fn handler(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
     require!(amount > 0, KaminoYieldModuleError::InvalidAmount);
 
     let (expected_module_call_authority, _) = Pubkey::find_program_address(
@@ -136,13 +133,21 @@ pub fn handler(ctx: Context<Deposit>, amount: u64) -> Result<()> {
 
     require!(
         ctx.accounts.kamino_module_state.kamino_module_type()? == KaminoModuleType::Token,
-        KaminoYieldModuleError::UnsupportedDepositMode
-    );
-    require!(
-        ctx.accounts.module_underlying_token_account.amount >= amount,
-        KaminoYieldModuleError::InsufficientLiquidity
+        KaminoYieldModuleError::UnsupportedWithdrawMode
     );
 
+    let reserve_data = ctx.accounts.kamino_reserve.try_borrow_data()?;
+    let (total_liquidity, collateral_supply) = read_exchange_rate_components(&reserve_data)?;
+    let collateral_amount =
+        calculate_collateral_to_redeem_up(amount, total_liquidity, collateral_supply)?;
+    drop(reserve_data);
+
+    require!(
+        ctx.accounts.vault_collateral_account.amount >= collateral_amount,
+        KaminoYieldModuleError::InsufficientCollateral
+    );
+
+    let vault_token_balance_before = ctx.accounts.vault_token_account.amount;
     let vault_key = ctx.accounts.kamino_module_state.vault;
     let module_state_bump = [ctx.accounts.kamino_module_state.bump];
     let module_state_signer_seeds: &[&[&[u8]]] = &[&[
@@ -151,36 +156,34 @@ pub fn handler(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         &module_state_bump,
     ]];
 
-    let deposit_ix = deposit::deposit_reserve_liquidity(
-        DepositReserveLiquidityAccounts {
+    let redeem_ix = withdraw::redeem_reserve_collateral(
+        RedeemReserveCollateralAccounts {
             owner: ctx.accounts.kamino_module_state.key(),
-            reserve: ctx.accounts.kamino_reserve.key(),
             lending_market: ctx.accounts.lending_market.key(),
+            reserve: ctx.accounts.kamino_reserve.key(),
             lending_market_authority: ctx.accounts.lending_market_authority.key(),
             reserve_liquidity_mint: ctx.accounts.reserve_liquidity_mint.key(),
-            reserve_liquidity_supply: ctx.accounts.reserve_liquidity_supply.key(),
             reserve_collateral_mint: ctx.accounts.reserve_collateral_mint.key(),
-            user_source_liquidity: ctx.accounts.module_underlying_token_account.key(),
-            user_destination_collateral: ctx.accounts.vault_collateral_account.key(),
+            reserve_liquidity_supply: ctx.accounts.reserve_liquidity_supply.key(),
+            user_source_collateral: ctx.accounts.vault_collateral_account.key(),
+            user_destination_liquidity: ctx.accounts.vault_token_account.key(),
             liquidity_token_program: ctx.accounts.liquidity_token_program.key(),
         },
-        amount,
+        collateral_amount,
     );
 
     invoke_signed(
-        &deposit_ix,
+        &redeem_ix,
         &[
             ctx.accounts.kamino_module_state.to_account_info(),
-            ctx.accounts.kamino_reserve.to_account_info(),
             ctx.accounts.lending_market.to_account_info(),
+            ctx.accounts.kamino_reserve.to_account_info(),
             ctx.accounts.lending_market_authority.to_account_info(),
             ctx.accounts.reserve_liquidity_mint.to_account_info(),
-            ctx.accounts.reserve_liquidity_supply.to_account_info(),
             ctx.accounts.reserve_collateral_mint.to_account_info(),
-            ctx.accounts
-                .module_underlying_token_account
-                .to_account_info(),
+            ctx.accounts.reserve_liquidity_supply.to_account_info(),
             ctx.accounts.vault_collateral_account.to_account_info(),
+            ctx.accounts.vault_token_account.to_account_info(),
             ctx.accounts.token_program.to_account_info(),
             ctx.accounts.liquidity_token_program.to_account_info(),
             ctx.accounts.klend_program.to_account_info(),
@@ -190,27 +193,44 @@ pub fn handler(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     )?;
 
     ctx.accounts.vault_collateral_account.reload()?;
+    ctx.accounts.vault_token_account.reload()?;
 
-    let reserve_data = ctx.accounts.kamino_reserve.try_borrow_data()?;
-    let (total_liquidity, collateral_supply) = read_exchange_rate_components(&reserve_data)?;
-    let cached_nav = calculate_token_nav(
-        ctx.accounts.vault_collateral_account.amount,
-        total_liquidity,
-        collateral_supply,
-    )?;
-    drop(reserve_data);
+    let returned_amount = ctx
+        .accounts
+        .vault_token_account
+        .amount
+        .checked_sub(vault_token_balance_before)
+        .ok_or_else(|| error!(KaminoYieldModuleError::MathOverflow))?;
+    require!(
+        returned_amount >= amount,
+        KaminoYieldModuleError::InsufficientReturnedLiquidity
+    );
 
     let clock = Clock::get()?;
+    let cached_nav = if ctx.accounts.vault_collateral_account.amount == 0 {
+        0
+    } else {
+        let reserve_data = ctx.accounts.kamino_reserve.try_borrow_data()?;
+        let (total_liquidity, collateral_supply) = read_exchange_rate_components(&reserve_data)?;
+        calculate_token_nav(
+            ctx.accounts.vault_collateral_account.amount,
+            total_liquidity,
+            collateral_supply,
+        )?
+    };
+
     ctx.accounts.kamino_module_state.cached_nav = cached_nav;
     ctx.accounts.kamino_module_state.last_updated_slot = clock.slot;
 
-    emit!(KaminoModuleDepositedEvent {
+    emit!(KaminoModuleWithdrawnEvent {
         vault: vault_key,
         module_state: ctx.accounts.kamino_module_state.key(),
         kamino_reserve: ctx.accounts.kamino_reserve.key(),
-        module_underlying_token_account: ctx.accounts.module_underlying_token_account.key(),
         vault_collateral_account: ctx.accounts.vault_collateral_account.key(),
-        amount,
+        vault_token_account: ctx.accounts.vault_token_account.key(),
+        requested_amount: amount,
+        collateral_amount,
+        returned_amount,
         cached_nav,
         slot: clock.slot,
     });

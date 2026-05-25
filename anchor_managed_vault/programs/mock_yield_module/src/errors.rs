@@ -11,6 +11,9 @@ pub enum MockYieldModuleError {
     #[msg("Invalid vault.")]
     InvalidVault,
 
+    #[msg("Invalid vault program.")]
+    InvalidVaultProgram,
+
     #[msg("Invalid token account.")]
     InvalidTokenAccount,
 

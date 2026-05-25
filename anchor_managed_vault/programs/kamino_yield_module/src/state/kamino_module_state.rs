@@ -19,6 +19,10 @@ pub struct KaminoModuleState {
     pub cached_nav: u64,
     pub last_updated_slot: u64,
 
+    // Module-authentication fields.
+    // Used to verify that module_call_authority is derived by the expected vault program.
+    pub vault_program_id: Pubkey,
+
     // Kamino-specific fields.
     // Reserve is the concrete Kamino lending pool this module tracks, e.g. a USDC reserve.
     pub kamino_reserve: Pubkey,

@@ -11,6 +11,12 @@ pub enum KaminoYieldModuleError {
     #[msg("Invalid vault.")]
     InvalidVault,
 
+    #[msg("Invalid vault program.")]
+    InvalidVaultProgram,
+
+    #[msg("Unauthorized vault caller.")]
+    UnauthorizedVault,
+
     #[msg("Invalid Kamino reserve.")]
     InvalidReserve,
 
@@ -29,8 +35,17 @@ pub enum KaminoYieldModuleError {
     #[msg("Deposit is only supported for token-mode modules for now.")]
     UnsupportedDepositMode,
 
+    #[msg("Withdraw is only supported for token-mode modules for now.")]
+    UnsupportedWithdrawMode,
+
     #[msg("Module token account does not have enough liquidity.")]
     InsufficientLiquidity,
+
+    #[msg("Module collateral account does not have enough collateral.")]
+    InsufficientCollateral,
+
+    #[msg("Module withdraw returned less liquidity than requested.")]
+    InsufficientReturnedLiquidity,
 
     #[msg("Module state is not initialized.")]
     NotInitialized,

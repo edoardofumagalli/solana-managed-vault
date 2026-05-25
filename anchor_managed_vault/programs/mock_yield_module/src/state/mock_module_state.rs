@@ -9,6 +9,9 @@ pub struct MockModuleState {
     pub cached_nav: u64,
     pub last_updated_slot: u64,
 
+    // Module-authentication fields.
+    pub vault_program_id: Pubkey,
+
     // Mock-module-specific fields.
     pub underlying_mint: Pubkey,
     pub module_token_account: Pubkey,

@@ -9,7 +9,7 @@ import {
 } from "@solana/spl-token";
 
 import { MockYieldModule } from "../target/types/mock_yield_module";
-import { manager } from "./helpers/setup";
+import { manager, program } from "./helpers/setup";
 import {
     createTokenAccount,
     createUnderlyingMint,
@@ -17,6 +17,7 @@ import {
     mintTokens,
 } from "./helpers/token";
 import {
+    deriveModuleCallAuthorityPda,
     deriveMockModuleAuthorityPda,
     deriveMockModuleStatePda,
 } from "./helpers/pda";
@@ -26,9 +27,9 @@ const mockYieldModuleProgram = anchor.workspace
 
 type MockModuleSetup = {
     vault: PublicKey;
-    vaultAuthority: Keypair;
     underlyingMint: PublicKey;
     mockModuleState: PublicKey;
+    moduleCallAuthority: PublicKey;
     mockModuleAuthority: PublicKey;
     mockModuleAuthorityBump: number;
     moduleTokenAccount: PublicKey;
@@ -36,8 +37,8 @@ type MockModuleSetup = {
 
 async function setupMockModule(): Promise<MockModuleSetup> {
     const underlyingMint = await createUnderlyingMint();
-    const vaultAuthority = Keypair.generate();
-    const vault = vaultAuthority.publicKey;
+    const vault = Keypair.generate().publicKey;
+    const [moduleCallAuthority] = deriveModuleCallAuthorityPda(vault);
 
     const [mockModuleState] = deriveMockModuleStatePda(
         vault,
@@ -55,7 +56,7 @@ async function setupMockModule(): Promise<MockModuleSetup> {
     );
 
     await mockYieldModuleProgram.methods
-        .initialize()
+        .initialize(program.programId)
         .accountsPartial({
             payer: manager,
             vault,
@@ -71,9 +72,9 @@ async function setupMockModule(): Promise<MockModuleSetup> {
 
     return {
         vault,
-        vaultAuthority,
         underlyingMint,
         mockModuleState,
+        moduleCallAuthority,
         mockModuleAuthority,
         mockModuleAuthorityBump,
         moduleTokenAccount,
@@ -92,6 +93,7 @@ describe("mock_yield_module", () => {
         );
 
         assert.equal(state.vault.toString(), setup.vault.toString());
+        assert.equal(state.vaultProgramId.toString(), program.programId.toString());
         assert.equal(state.cachedNav.toString(), "0");
         assert.isTrue(state.lastUpdatedSlot.gt(new anchor.BN(0)));
         assert.equal(
@@ -148,7 +150,7 @@ describe("mock_yield_module", () => {
         assert.isTrue(state.lastUpdatedSlot.gt(new anchor.BN(0)));
     });
 
-    it("deposits tokens into the module and updates cached NAV", async () => {
+    it("rejects direct deposit because only the vault program can sign module_call_authority", async () => {
         const setup = await setupMockModule();
         const depositAmount = 250_000;
         await mintTokens(
@@ -157,47 +159,20 @@ describe("mock_yield_module", () => {
             depositAmount
         );
 
-        await mockYieldModuleProgram.methods
-            .deposit(new anchor.BN(depositAmount))
-            .accountsPartial({
-                vaultAuthority: setup.vault,
-                mockModuleState: setup.mockModuleState,
-                moduleTokenAccount: setup.moduleTokenAccount,
-            })
-            .signers([setup.vaultAuthority])
-            .rpc();
-
-        const state = await mockYieldModuleProgram.account.mockModuleState.fetch(
-            setup.mockModuleState
-        );
-        const moduleTokenState = await fetchTokenAccount(
-            setup.moduleTokenAccount
-        );
-
-        assert.equal(
-            moduleTokenState.amount.toString(),
-            depositAmount.toString()
-        );
-        assert.equal(state.cachedNav.toString(), depositAmount.toString());
-        assert.isTrue(state.lastUpdatedSlot.gt(new anchor.BN(0)));
-    });
-
-    it("rejects deposit with zero amount", async () => {
-        const setup = await setupMockModule();
+        let rejected = false;
         try {
             await mockYieldModuleProgram.methods
-                .deposit(new anchor.BN(0))
+                .deposit(new anchor.BN(depositAmount))
                 .accountsPartial({
-                    vaultAuthority: setup.vault,
+                    moduleCallAuthority: setup.moduleCallAuthority,
                     mockModuleState: setup.mockModuleState,
                     moduleTokenAccount: setup.moduleTokenAccount,
                 })
-                .signers([setup.vaultAuthority])
                 .rpc();
 
-            assert.fail("Expected deposit to reject zero amount");
+            assert.fail("Expected direct deposit to reject missing PDA signature");
         } catch (error) {
-            assert.include(String(error), "InvalidAmount");
+            rejected = true;
         }
 
         const state = await mockYieldModuleProgram.account.mockModuleState.fetch(
@@ -207,74 +182,10 @@ describe("mock_yield_module", () => {
             setup.moduleTokenAccount
         );
 
-        assert.equal(moduleTokenState.amount.toString(), "0");
+        assert.isTrue(rejected);
+        assert.equal(moduleTokenState.amount.toString(), depositAmount.toString());
         assert.equal(state.cachedNav.toString(), "0");
     });
-
-    it("rejects deposit from an unauthorized vault authority", async () => {
-        const setup = await setupMockModule();
-        const wrongVaultAuthority = Keypair.generate();
-        try {
-            await mockYieldModuleProgram.methods
-                .deposit(new anchor.BN(10_000))
-                .accountsPartial({
-                    vaultAuthority: wrongVaultAuthority.publicKey,
-                    mockModuleState: setup.mockModuleState,
-                    moduleTokenAccount: setup.moduleTokenAccount,
-                })
-                .signers([wrongVaultAuthority])
-                .rpc();
-
-            assert.fail("Expected deposit to reject an unauthorized vault authority");
-        } catch (error) {
-            assert.include(String(error), "UnauthorizedVault");
-        }
-
-        const moduleTokenState = await fetchTokenAccount(
-            setup.moduleTokenAccount
-        );
-        assert.equal(moduleTokenState.amount.toString(), "0");
-    });
-
-    it("rejects deposit into a different module token account", async () => {
-        const setup = await setupMockModule();
-        const wrongModuleTokenAccount = await createTokenAccount(
-            setup.underlyingMint,
-            manager
-        );
-
-        try {
-            await mockYieldModuleProgram.methods
-                .deposit(new anchor.BN(10_000))
-                .accountsPartial({
-                    vaultAuthority: setup.vault,
-                    mockModuleState: setup.mockModuleState,
-                    moduleTokenAccount: wrongModuleTokenAccount,
-                })
-                .signers([setup.vaultAuthority])
-                .rpc();
-
-            assert.fail("Expected deposit to reject an unexpected module token account");
-        } catch (error) {
-            assert.include(String(error), "InvalidTokenAccount");
-        }
-
-        const state = await mockYieldModuleProgram.account.mockModuleState.fetch(
-            setup.mockModuleState
-        );
-        const expectedModuleTokenState = await fetchTokenAccount(
-            setup.moduleTokenAccount
-        );
-        const wrongModuleTokenState = await fetchTokenAccount(
-            wrongModuleTokenAccount
-        );
-
-        assert.equal(expectedModuleTokenState.amount.toString(), "0");
-        assert.equal(wrongModuleTokenState.amount.toString(), "0");
-        assert.equal(state.cachedNav.toString(), "0");
-    });
-
-
 
     it("returns capital from the module to the vault and updates cached NAV", async () => {
         const setup = await setupMockModule();
@@ -290,16 +201,6 @@ describe("mock_yield_module", () => {
             setup.moduleTokenAccount,
             depositAmount
         );
-
-        await mockYieldModuleProgram.methods
-            .deposit(new anchor.BN(depositAmount))
-            .accountsPartial({
-                vaultAuthority: setup.vault,
-                mockModuleState: setup.mockModuleState,
-                moduleTokenAccount: setup.moduleTokenAccount,
-            })
-            .signers([setup.vaultAuthority])
-            .rpc();
 
         await mockYieldModuleProgram.methods
             .returnCapital(new anchor.BN(returnAmount))

@@ -122,6 +122,40 @@ pub fn calculate_token_nav(
     u64::try_from(nav).map_err(|_| error!(KaminoYieldModuleError::MathOverflow))
 }
 
+/// Converts a requested underlying amount into the collateral amount to redeem.
+/// Rounds up so the Klend redeem should return at least the requested liquidity
+/// when the reserve has enough liquidity available.
+pub fn calculate_collateral_to_redeem_up(
+    requested_underlying_amount: u64,
+    total_liquidity: u128,
+    collateral_supply: u128,
+) -> Result<u64> {
+    require!(
+        total_liquidity > 0 && collateral_supply > 0,
+        KaminoYieldModuleError::InvalidNavValue
+    );
+
+    let numerator = (requested_underlying_amount as u128)
+        .checked_mul(collateral_supply)
+        .ok_or_else(|| error!(KaminoYieldModuleError::MathOverflow))?;
+    let quotient = numerator
+        .checked_div(total_liquidity)
+        .ok_or_else(|| error!(KaminoYieldModuleError::MathOverflow))?;
+    let remainder = numerator
+        .checked_rem(total_liquidity)
+        .ok_or_else(|| error!(KaminoYieldModuleError::MathOverflow))?;
+
+    let collateral_amount = if remainder == 0 {
+        quotient
+    } else {
+        quotient
+            .checked_add(1)
+            .ok_or_else(|| error!(KaminoYieldModuleError::MathOverflow))?
+    };
+
+    u64::try_from(collateral_amount).map_err(|_| error!(KaminoYieldModuleError::MathOverflow))
+}
+
 fn read_u64(data: &[u8], offset: usize) -> Result<u64> {
     let bytes = data
         .get(offset..offset + 8)

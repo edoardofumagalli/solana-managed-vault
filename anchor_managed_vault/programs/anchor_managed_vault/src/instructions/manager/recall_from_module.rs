@@ -5,7 +5,7 @@ use anchor_lang::{
         program::invoke_signed,
     },
 };
-use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
+use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::{
     constants::{
@@ -13,18 +13,17 @@ use crate::{
         MODULE_VAULT_OFFSET, VAULT_SEED,
     },
     errors::VaultError,
-    events::ModuleCapitalDeployedEvent,
-    math::{checked_float_cap, total_assets},
+    events::ModuleCapitalRecalledFromModuleEvent,
     state::{ModuleEntry, Vault},
 };
 
-// Anchor instruction discriminator for `global:deposit`, computed as
-// sha256("global:deposit")[0..8]. Kept as a constant so the vault can
+// Anchor instruction discriminator for `global:withdraw`, computed as
+// sha256("global:withdraw")[0..8]. Kept as a constant so the vault can
 // call any registered module without depending on that module's Rust crate.
-const MODULE_DEPOSIT_DISCRIMINATOR: [u8; 8] = [242, 35, 198, 137, 82, 225, 242, 182];
+const MODULE_WITHDRAW_DISCRIMINATOR: [u8; 8] = [183, 18, 70, 156, 148, 109, 161, 34];
 
 #[derive(Accounts)]
-pub struct DeployToModule<'info> {
+pub struct RecallFromModule<'info> {
     pub manager: Signer<'info>,
 
     #[account(
@@ -38,8 +37,7 @@ pub struct DeployToModule<'info> {
     pub vault: Account<'info, Vault>,
 
     /// CHECK: Non-custodial PDA used only to authenticate vault-initiated CPIs
-    /// into external modules. The module validates this PDA using the expected
-    /// vault program id stored in its own state/config.
+    /// into external modules. It must never own vault funds or mint authority.
     #[account(
         seeds = [MODULE_CALL_AUTHORITY_SEED, vault.key().as_ref()],
         bump,
@@ -58,8 +56,6 @@ pub struct DeployToModule<'info> {
         constraint = module_entry.vault == vault.key() @ VaultError::InvalidModule,
         constraint = module_entry.module_program_id == module_program.key() @ VaultError::InvalidModule,
         constraint = module_entry.is_active @ VaultError::InvalidModule,
-        constraint = module_entry.module_underlying_token_account == module_underlying_token_account.key()
-            @ VaultError::InvalidModule,
     )]
     pub module_entry: Box<Account<'info, ModuleEntry>>,
 
@@ -76,39 +72,15 @@ pub struct DeployToModule<'info> {
     )]
     pub vault_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    #[account(
-        mut,
-        token::mint = underlying_mint,
-        token::token_program = token_program,
-    )]
-    pub module_underlying_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
-
     /// CHECK: Generic external module program. It is bound through ModuleEntry
-    /// and invoked through a raw CPI to its standard deposit instruction.
+    /// and invoked through a raw CPI to its standard withdraw instruction.
     #[account(executable)]
     pub module_program: UncheckedAccount<'info>,
 
     pub token_program: Interface<'info, TokenInterface>,
 }
 
-impl<'info> DeployToModule<'info> {
-    fn transfer_underlying_to_module(&self, amount: u64, signer_seeds: &[&[&[u8]]]) -> Result<()> {
-        token_interface::transfer_checked(
-            CpiContext::new_with_signer(
-                self.token_program.to_account_info(),
-                TransferChecked {
-                    from: self.vault_token_account.to_account_info(),
-                    mint: self.underlying_mint.to_account_info(),
-                    to: self.module_underlying_token_account.to_account_info(),
-                    authority: self.vault.to_account_info(),
-                },
-                signer_seeds,
-            ),
-            amount,
-            self.underlying_mint.decimals,
-        )
-    }
-
+impl<'info> RecallFromModule<'info> {
     fn read_module_cached_nav(&self, remaining_accounts: &[AccountInfo<'info>]) -> Result<u64> {
         let module_state_info = remaining_accounts
             .iter()
@@ -145,15 +117,15 @@ impl<'info> DeployToModule<'info> {
         Ok(u64::from_le_bytes(cached_nav_bytes))
     }
 
-    fn invoke_module_deposit(
+    fn invoke_module_withdraw(
         &self,
         amount: u64,
         remaining_accounts: &[AccountInfo<'info>],
         signer_seeds: &[&[&[u8]]],
     ) -> Result<()> {
-        // The concrete module owns the account order, but the vault still
-        // enforces that the registered module state and staging token account
-        // are present before dispatching the raw CPI.
+        // Recall modules may represent deployed capital with protocol-specific
+        // accounts, but every module must expose the registered state account
+        // and return underlying into the vault token account passed here.
         let module_state_info = remaining_accounts
             .iter()
             .find(|account| account.key() == self.module_entry.module_state)
@@ -168,7 +140,7 @@ impl<'info> DeployToModule<'info> {
         require!(
             remaining_accounts
                 .iter()
-                .any(|account| account.key() == self.module_underlying_token_account.key()),
+                .any(|account| account.key() == self.vault_token_account.key()),
             VaultError::InvalidModule
         );
 
@@ -186,7 +158,7 @@ impl<'info> DeployToModule<'info> {
         }));
 
         let mut data = Vec::with_capacity(16);
-        data.extend_from_slice(&MODULE_DEPOSIT_DISCRIMINATOR);
+        data.extend_from_slice(&MODULE_WITHDRAW_DISCRIMINATOR);
         data.extend_from_slice(&amount.to_le_bytes());
 
         let instruction = Instruction {
@@ -207,42 +179,12 @@ impl<'info> DeployToModule<'info> {
 }
 
 pub fn handler<'info>(
-    ctx: Context<'_, '_, '_, 'info, DeployToModule<'info>>,
+    ctx: Context<'_, '_, '_, 'info, RecallFromModule<'info>>,
     amount: u64,
 ) -> Result<()> {
     require!(amount > 0, VaultError::InvalidAmount);
-    require!(!ctx.accounts.vault.is_shutdown, VaultError::VaultShutdown);
-    require!(
-        ctx.accounts.vault_token_account.amount >= amount,
-        VaultError::InsufficientLiquidity
-    );
 
-    let total_assets_now = total_assets(
-        ctx.accounts.vault_token_account.amount,
-        ctx.accounts.vault.float_outstanding,
-        ctx.accounts.vault.modules_nav_total,
-    )?;
-
-    let deployed_value_after = ctx
-        .accounts
-        .vault
-        .float_outstanding
-        .checked_add(ctx.accounts.vault.modules_nav_total)
-        .ok_or_else(|| error!(VaultError::MathOverflow))?
-        .checked_add(amount)
-        .ok_or_else(|| error!(VaultError::MathOverflow))?;
-
-    checked_float_cap(
-        total_assets_now,
-        deployed_value_after,
-        ctx.accounts.vault.max_float_bps,
-    )?;
-
-    let underlying_mint_key = ctx.accounts.underlying_mint.key();
-    let vault_bump = [ctx.accounts.vault.bump];
-    let vault_signer_seeds: &[&[&[u8]]] =
-        &[&[VAULT_SEED, underlying_mint_key.as_ref(), &vault_bump]];
-
+    let vault_token_balance_before = ctx.accounts.vault_token_account.amount;
     let vault_key = ctx.accounts.vault.key();
     let module_call_authority_bump = [ctx.bumps.module_call_authority];
     let module_call_authority_signer_seeds: &[&[&[u8]]] = &[&[
@@ -251,13 +193,23 @@ pub fn handler<'info>(
         &module_call_authority_bump,
     ]];
 
-    ctx.accounts
-        .transfer_underlying_to_module(amount, vault_signer_seeds)?;
-    ctx.accounts.invoke_module_deposit(
+    ctx.accounts.invoke_module_withdraw(
         amount,
         ctx.remaining_accounts,
         module_call_authority_signer_seeds,
     )?;
+    ctx.accounts.vault_token_account.reload()?;
+
+    let returned_amount = ctx
+        .accounts
+        .vault_token_account
+        .amount
+        .checked_sub(vault_token_balance_before)
+        .ok_or_else(|| error!(VaultError::MathOverflow))?;
+    require!(
+        returned_amount >= amount,
+        VaultError::InsufficientReturnedLiquidity
+    );
 
     let old_cached_nav = ctx.accounts.module_entry.cached_nav;
     let new_cached_nav = ctx
@@ -277,16 +229,15 @@ pub fn handler<'info>(
     ctx.accounts.module_entry.nav_last_updated_slot = slot;
     ctx.accounts.vault.modules_nav_total = modules_nav_total;
 
-    emit!(ModuleCapitalDeployedEvent {
+    emit!(ModuleCapitalRecalledFromModuleEvent {
         vault: ctx.accounts.vault.key(),
         manager: ctx.accounts.manager.key(),
         module_entry: ctx.accounts.module_entry.key(),
         module_program_id: ctx.accounts.module_entry.module_program_id,
         module_state: ctx.accounts.module_entry.module_state,
         vault_token_account: ctx.accounts.vault_token_account.key(),
-        module_token_account: ctx.accounts.module_underlying_token_account.key(),
-        amount,
-        deployed_value_after,
+        requested_amount: amount,
+        returned_amount,
         old_cached_nav,
         new_cached_nav,
         modules_nav_total,

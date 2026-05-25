@@ -14,8 +14,8 @@ declare_id!("AFPVi8LB8iwXAGLr72AqaG6aH8pwVYzfR5ArCiiceBWe");
 pub mod mock_yield_module {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        instructions::initialize::handler(ctx)
+    pub fn initialize(ctx: Context<Initialize>, vault_program_id: Pubkey) -> Result<()> {
+        instructions::initialize::handler(ctx, vault_program_id)
     }
 
     pub fn calculate_nav(ctx: Context<CalculateNav>) -> Result<()> {
@@ -28,5 +28,9 @@ pub mod mock_yield_module {
 
     pub fn return_capital(ctx: Context<ReturnCapital>, amount: u64) -> Result<()> {
         instructions::return_capital::handler(ctx, amount)
+    }
+
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+        instructions::withdraw::handler(ctx, amount)
     }
 }

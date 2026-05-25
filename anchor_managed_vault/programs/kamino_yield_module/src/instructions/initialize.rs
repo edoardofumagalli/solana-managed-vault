@@ -10,6 +10,7 @@ use crate::{
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct InitializeArgs {
+    pub vault_program_id: Pubkey,
     pub lending_market: Pubkey,
     pub kamino_reserve: Pubkey,
     pub module_type: u8,
@@ -46,6 +47,12 @@ pub struct Initialize<'info> {
 }
 
 pub fn handler(ctx: Context<Initialize>, args: InitializeArgs) -> Result<()> {
+    require_keys_neq!(
+        args.vault_program_id,
+        Pubkey::default(),
+        KaminoYieldModuleError::InvalidVaultProgram
+    );
+
     require!(
         args.module_type == MODULE_TYPE_TOKEN || args.module_type == MODULE_TYPE_OBLIGATION,
         KaminoYieldModuleError::InvalidModuleType
@@ -63,6 +70,7 @@ pub fn handler(ctx: Context<Initialize>, args: InitializeArgs) -> Result<()> {
     ctx.accounts.module_config.set_inner(ModuleConfig {
         bump: ctx.bumps.module_config,
         vault: ctx.accounts.vault.key(),
+        vault_program_id: args.vault_program_id,
         lending_market: args.lending_market,
         kamino_reserve: args.kamino_reserve,
         module_type: args.module_type,
@@ -76,6 +84,7 @@ pub fn handler(ctx: Context<Initialize>, args: InitializeArgs) -> Result<()> {
             vault: ctx.accounts.vault.key(),
             cached_nav: 0,
             last_updated_slot: clock.slot,
+            vault_program_id: args.vault_program_id,
             kamino_reserve: args.kamino_reserve,
             lending_market: args.lending_market,
             module_type: args.module_type,

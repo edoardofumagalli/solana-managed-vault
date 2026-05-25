@@ -31,4 +31,8 @@ pub mod kamino_yield_module {
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         deposit::handler(ctx, amount)
     }
+
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+        withdraw::handler(ctx, amount)
+    }
 }

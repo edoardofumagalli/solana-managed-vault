@@ -124,7 +124,7 @@ async function setupMockModule(
     );
 
     await mockYieldModuleProgram.methods
-        .initialize()
+        .initialize(program.programId)
         .accountsPartial({
             payer: manager,
             vault,

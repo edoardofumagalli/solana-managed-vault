@@ -29,6 +29,11 @@ pub const MANAGER_WITHDRAW_REQUEST_SEED: &[u8] = b"manager_withdraw_request";
 // can register multiple independent strategies for the same vault.
 pub const MODULE_ENTRY_SEED: &[u8] = b"module_entry";
 
+// Non-custodial PDA used only to authenticate vault-initiated CPIs into
+// external modules. It must never own vault funds or mint authority.
+// Derive with [MODULE_CALL_AUTHORITY_SEED, vault.key().as_ref()].
+pub const MODULE_CALL_AUTHORITY_SEED: &[u8] = b"module_call_authority";
+
 // Guardrail for how many external module policies a vault can register.
 // The vault stores only an aggregate NAV total, while each ModuleEntry stores
 // per-policy module details. Keeping a cap avoids unbounded registration.

@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_interface::TokenAccount;
 
 use crate::{
-    constants::MOCK_MODULE_STATE_SEED,
+    constants::{MOCK_MODULE_STATE_SEED, MODULE_CALL_AUTHORITY_SEED},
     errors::MockYieldModuleError,
     events::MockModuleDepositedEvent,
     state::MockModuleState,
@@ -10,7 +10,8 @@ use crate::{
 
 #[derive(Accounts)]
 pub struct Deposit<'info> {
-    pub vault_authority: Signer<'info>,
+    /// Non-custodial PDA signer passed by the vault program CPI.
+    pub module_call_authority: Signer<'info>,
 
     #[account(
         mut,
@@ -32,9 +33,17 @@ pub struct Deposit<'info> {
 
 pub fn handler(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     require!(amount > 0, MockYieldModuleError::InvalidAmount);
+
+    let (expected_module_call_authority, _) = Pubkey::find_program_address(
+        &[
+            MODULE_CALL_AUTHORITY_SEED,
+            ctx.accounts.mock_module_state.vault.as_ref(),
+        ],
+        &ctx.accounts.mock_module_state.vault_program_id,
+    );
     require_keys_eq!(
-        ctx.accounts.vault_authority.key(),
-        ctx.accounts.mock_module_state.vault,
+        ctx.accounts.module_call_authority.key(),
+        expected_module_call_authority,
         MockYieldModuleError::UnauthorizedVault
     );
     require!(

@@ -169,6 +169,9 @@ pub struct KaminoModuleState {
     pub cached_nav: u64,
     pub last_updated_slot: u64,
 
+    // Module-authentication fields.
+    pub vault_program_id: Pubkey,
+
     // Kamino-specific fields.
     pub kamino_reserve: Pubkey,
     pub lending_market: Pubkey,
@@ -196,6 +199,7 @@ Suggested state:
 pub struct ModuleConfig {
     pub bump: u8,
     pub vault: Pubkey,
+    pub vault_program_id: Pubkey,
     pub lending_market: Pubkey,
     pub kamino_reserve: Pubkey,
     pub module_type: u8,
@@ -209,6 +213,7 @@ Purpose of each field:
 |---|---|
 | `bump` | Allows the module PDA to be re-derived and signed if needed. |
 | `vault` | Binds this config to one vault. |
+| `vault_program_id` | Program id expected to derive the non-custodial `module_call_authority` PDA. |
 | `lending_market` | Kamino lending market this adapter targets. |
 | `kamino_reserve` | Reserve used for NAV calculation and future deposits. |
 | `module_type` | Selects token-based vs obligation-based accounting. |
@@ -237,6 +242,7 @@ Suggested args:
 
 ```rust
 pub struct InitializeArgs {
+    pub vault_program_id: Pubkey,
     pub lending_market: Pubkey,
     pub kamino_reserve: Pubkey,
     pub module_type: u8,
@@ -339,12 +345,23 @@ Important: `sync_module_nav` does not CPI into Kamino. It only reads the standar
 
 The NAV adapter milestone is complete enough to move to capital movement design.
 
-The mock module currently has vault-side instructions:
+The mock module originally had specialized vault-side instructions:
 
 ```text
 deploy_to_mock_module
 recall_from_mock_module
 ```
+
+Those typed mock instructions can remain useful as a simple learning and regression
+harness, but they are not the target adapter contract. The generic path should use:
+
+```text
+deploy_to_module
+recall_from_module
+```
+
+with the concrete module called through the standard `deposit(amount)` and
+`withdraw(amount)` interface.
 
 For Kamino, do not jump directly into implementation. First design the deposit path and decide where each responsibility belongs.
 
@@ -412,6 +429,7 @@ Preferred design:
 vault deploy_to_module
   vault transfers exactly amount from vault_token_account
   into a module-owned underlying token account
+  vault signs the module CPI with module_call_authority, not the vault PDA
   module then uses its own authority for protocol-specific CPI
 ```
 
@@ -499,11 +517,11 @@ The vault can call this standard interface through raw CPI / `remaining_accounts
 Common account rule for module `deposit`:
 
 ```text
-vault_authority                 signer PDA controlled by the vault program
+module_call_authority            signer PDA controlled by the vault program
 module_specific_accounts...      supplied through remaining_accounts
 ```
 
-`vault_authority` is the only account injected by the vault as a universal prefix. It proves that the module was called by the vault program, not directly by an arbitrary client. The module should validate that this signer matches the vault recorded in its config/state.
+`module_call_authority` is the only account injected by the vault as a universal prefix. It proves that the module was called by the vault program, not directly by an arbitrary client. The module should validate that this signer is the expected non-custodial PDA for the vault recorded in its config/state.
 
 `module_state` and `module_underlying_token_account` are still mandatory for the generic vault/module contract, but their exact position is defined by each module's Anchor account context. The vault validates that both registered accounts are present in `remaining_accounts` before invoking the module.
 
@@ -515,13 +533,13 @@ Protocol-specific accounts come through `remaining_accounts`. For Kamino these i
 
 `vault.deploy_to_module` builds a raw CPI into the registered module's standard `deposit(amount)` instruction.
 
-Important: the vault instruction injects the vault PDA as the first CPI account:
+Important: the vault instruction injects `module_call_authority` as the first CPI account:
 
 ```text
-0. vault_authority                 signer, readonly, added by vault.deploy_to_module
+0. module_call_authority          signer, readonly, added by vault.deploy_to_module
 ```
 
-Therefore the client/test/playground must not include `vault_authority` in `remaining_accounts`. The `remaining_accounts` list starts from the second account expected by `kamino_yield_module.deposit`.
+Therefore the client/test/playground must not include `module_call_authority` in `remaining_accounts`. The `remaining_accounts` list starts from the second account expected by `kamino_yield_module.deposit`.
 
 For Kamino token-mode deposit, pass `remaining_accounts` in exactly this order:
 
@@ -545,7 +563,7 @@ For Kamino token-mode deposit, pass `remaining_accounts` in exactly this order:
 Full CPI account order seen by `kamino_yield_module.deposit`:
 
 ```text
-vault_authority,
+module_call_authority,
 module_config,
 kamino_module_state,
 kamino_reserve,
@@ -597,14 +615,14 @@ The vault instruction should:
 1. validate manager authorization, shutdown state, module registration, idle liquidity, and float cap;
 2. transfer exactly `amount` from `vault_token_account` into the registered `module_underlying_token_account`;
 3. CPI-call the registered module program's standard `deposit(amount)` instruction;
-4. pass the vault PDA as `vault_authority` signer for module authentication only;
+4. pass a vault-program call authority signer for module authentication only;
 5. pass protocol-specific module accounts through `remaining_accounts`;
 6. reload/read the standardized module state header after CPI;
 7. update `module_entry.cached_nav` and `vault.modules_nav_total` in the same instruction.
 
 The module instruction should:
 
-1. reject direct calls that do not include the vault PDA as signer;
+1. reject direct calls that do not include the expected vault-program call authority signer;
 2. validate its own module state/config and staging token account;
 3. use its own module authority to spend from `module_underlying_token_account`;
 4. perform protocol-specific CPI, such as Kamino/Klend deposit;
@@ -638,11 +656,12 @@ Pre-deploy cap checks can use `newly_deployed_amount`. After the module updates 
 
 Implement the generic pattern in this order:
 
-1. Refactor `kamino_yield_module.deposit` so it can be called by the vault PDA signer instead of directly relying on a client/manager signer.
-2. Refactor `deploy_to_module` to build a raw CPI to the registered module program and pass module-specific accounts through `remaining_accounts`.
-3. Make `deploy_to_module` read the standardized module header after CPI and update `module_entry.cached_nav` plus `vault.modules_nav_total` atomically.
-4. Add focused Kamino pre-CPI tests where possible, then add a devnet/local-fixture playground for the real Klend CPI path.
-5. Optionally adapt the mock module later as a generic harness if we want a fully local test for the same interface without Kamino accounts.
+1. Add a non-custodial `module_call_authority` PDA derived as `[b"module_call_authority", vault]`.
+2. Store the expected vault program id in each module's config/state so modules can verify that PDA without importing the vault crate.
+3. Refactor `deploy_to_module` to pass `module_call_authority` as the module CPI signer instead of the vault PDA.
+4. Refactor `kamino_yield_module.deposit` and the mock harness deposit to validate `module_call_authority`.
+5. Keep the atomic NAV update in `deploy_to_module` after the module CPI.
+6. Add focused Kamino pre-CPI tests where possible, then add a devnet/local-fixture playground for the real Klend CPI path.
 
 This keeps the current branch focused on the Kamino adapter while still moving toward the generic module pattern. The mock module is useful as a future test harness, but it is not required to complete the Kamino deposit refactor.
 
@@ -656,6 +675,340 @@ The price is that we must define and respect a small module interface contract:
 2. standard capital deployment instruction shape;
 3. module-owned underlying token account;
 4. module-updated `cached_nav` after protocol-specific work.
+
+## Generic Recall Design
+
+The recall path is the mirror of `deploy_to_module`: it moves capital from an on-chain module back into the managed vault's idle liquidity.
+
+Use different names at the two layers:
+
+```text
+vault.recall_from_module(amount)
+module.withdraw(amount)
+```
+
+The vault-facing verb is `recall` because the manager is recalling deployed strategy capital. The module-facing verb is `withdraw` because each adapter withdraws from its own strategy or protocol.
+
+### Amount Unit
+
+Decision: `amount` means requested underlying amount.
+
+Reason: the vault accounts in underlying units. It should not need to know whether a module internally holds collateral tokens, LP tokens, obligations, shares, or any other protocol-specific receipt asset. The adapter is responsible for translating an underlying request into the protocol-specific amount to redeem.
+
+For Kamino token-mode, this means:
+
+```text
+requested_underlying_amount -> collateral_amount_to_redeem
+```
+
+The Kamino module should compute the collateral amount using the reserve exchange rate and round up so the redeemed underlying is at least the requested amount when liquidity is available. If Kamino cannot return the requested amount because of liquidity, rounding, or protocol constraints, the instruction should fail and the whole transaction should roll back.
+
+### Important Authority Update
+
+The original deposit implementation authenticated the module CPI with the vault PDA signer. This worked for deposit because the vault did not pass `vault_token_account` into the module CPI.
+
+For recall, the module naturally needs a destination account for returned underlying. If that destination is `vault_token_account` and the module also receives the vault PDA signer, a buggy or malicious registered module could use that signer to debit the vault token account.
+
+Preferred design before implementing recall:
+
+```text
+use module_call_authority instead of vault PDA as the module CPI signer
+```
+
+`module_call_authority` should be a vault-program PDA used only to prove that the vault program initiated the CPI. It must not be the authority of `vault_token_account`, `share_mint`, or any other custody account.
+
+Chosen derivation:
+
+```text
+[b"module_call_authority", vault.key()]
+```
+
+Reason: every module state already stores the vault it belongs to. Deriving the call authority from the vault lets the module validate the signer without needing to know or parse the vault program's `ModuleEntry` account.
+
+The PDA itself does not need to be stored in `ModuleEntry`; it can be derived by the vault whenever it builds a module CPI. The module should store the expected vault program id in its own config/state and verify:
+
+```text
+module_call_authority == PDA([b"module_call_authority", vault], expected_vault_program_id)
+module_call_authority.is_signer == true
+```
+
+The vault signs module CPIs with this PDA. The PDA must never be used as the authority of `vault_token_account`, `share_mint`, or any other custody account.
+
+This change should be applied to both:
+
+1. `deploy_to_module -> module.deposit`;
+2. `recall_from_module -> module.withdraw`.
+
+That keeps the interface symmetric and avoids giving external modules signer power over vault custody accounts.
+
+### Recall Flow
+
+Target single-instruction flow:
+
+```text
+manager calls vault.recall_from_module(amount)
+
+vault:
+  validates manager
+  validates ModuleEntry is active
+  validates requested amount > 0
+  snapshots vault_token_account.amount
+  CPI-calls the registered module's standard withdraw instruction
+  passes module_call_authority as signer for module authentication only
+  reads the standardized module_state header after CPI
+  verifies vault idle liquidity increased by at least amount
+  updates ModuleEntry.cached_nav and vault.modules_nav_total
+```
+
+Module:
+
+```text
+module.withdraw(amount)
+  validates module call authority
+  validates module state/config
+  converts requested underlying amount into strategy-specific redeem amount
+  performs protocol-specific withdraw/redeem CPI
+  sends underlying back to vault_token_account
+  updates module_state.cached_nav and last_updated_slot
+```
+
+For Kamino token-mode specifically:
+
+```text
+kamino_yield_module.withdraw(amount)
+  requested unit: underlying
+  source collateral: vault_collateral_account
+  source authority: kamino_module_state PDA
+  destination liquidity: vault_token_account
+  external CPI: Klend redeem_reserve_collateral
+  after CPI: update cached_nav using remaining collateral balance and reserve exchange rate
+```
+
+### Shutdown Behavior
+
+Unlike `deploy_to_module`, recall should be allowed while the vault is shutdown.
+
+Reason: recall reduces strategy exposure and brings liquidity back to the vault. Emergency shutdown should block risk-increasing actions, but recalling capital is a protective action.
+
+The instruction should still require manager authorization unless we later design an emergency-admin or cranker-specific recall path.
+
+### Accounting Rule
+
+Recall should not touch `float_outstanding`.
+
+On-chain module value is represented by:
+
+```text
+modules_nav_total
+```
+
+After module withdraw succeeds, the vault should read the module's updated `cached_nav` and update:
+
+```text
+vault.modules_nav_total = vault.modules_nav_total - old_cached_nav + new_cached_nav
+module_entry.cached_nav = new_cached_nav
+```
+
+The vault should also verify actual returned liquidity by comparing the vault token account balance before and after the module CPI:
+
+```text
+actual_returned = vault_token_account.amount_after - vault_token_account.amount_before
+require actual_returned >= requested_underlying_amount
+```
+
+If the module returns slightly more because of rounding up collateral redemption, the extra amount stays as vault idle liquidity and benefits all share holders through `total_assets`.
+
+### Standard Module Withdraw Interface
+
+Each yield module should expose the same Anchor instruction shape:
+
+```text
+withdraw(amount: u64)
+```
+
+`amount` is always denominated in the vault's underlying token. It means:
+
+```text
+return at least this many underlying tokens to the vault
+```
+
+It does not mean collateral amount, LP token amount, obligation collateral amount, or any other module-internal unit. Each module translates the requested underlying amount into whatever protocol-specific amount it needs to redeem.
+
+Anchor discriminator:
+
+```text
+sha256("global:withdraw")[0..8]
+= [183, 18, 70, 156, 148, 109, 161, 34]
+```
+
+The vault should keep this discriminator as a documented constant, the same way it does for `global:deposit`, so it can call registered modules without importing their crates.
+
+Required behavior for every module implementation:
+
+1. reject `amount == 0`;
+2. reject direct calls that do not include the expected `module_call_authority` signer;
+3. send returned underlying to the vault token account passed by the vault;
+4. update the module state's standard `cached_nav` header before returning;
+5. fail the whole instruction if it cannot return at least the requested underlying amount.
+
+Common account rule:
+
+```text
+module_call_authority            signer PDA controlled by the vault program
+module_specific_accounts...      supplied through remaining_accounts
+```
+
+The vault remains responsible for verifying the actual balance delta on `vault_token_account` after CPI. The module is responsible for protocol-specific redemption and for keeping its own NAV state current.
+
+### Kamino Token-Mode Withdraw `remaining_accounts` Order
+
+`vault.recall_from_module` will build a raw CPI into the registered module's standard `withdraw(amount)` instruction.
+
+As with deposit, the vault instruction injects `module_call_authority` as the first CPI account:
+
+```text
+0. module_call_authority          signer, readonly, added by vault.recall_from_module
+```
+
+Therefore the client/test/playground must not include `module_call_authority` in `remaining_accounts`. The `remaining_accounts` list starts from the second account expected by `kamino_yield_module.withdraw`.
+
+For Kamino token-mode withdraw, pass `remaining_accounts` in exactly this order:
+
+| Index in `remaining_accounts` | Kamino withdraw account | Writable | Signer | Purpose |
+|---:|---|---|---|---|
+| `0` | `module_config` | no | no | Stores Kamino adapter configuration and binds the module to the vault and expected vault program id. |
+| `1` | `kamino_module_state` | yes | no | Module PDA state; signs the Klend redeem CPI internally and stores updated `cached_nav`. |
+| `2` | `lending_market` | no | no | Klend lending market configured for this module. |
+| `3` | `kamino_reserve` | yes | no | Klend reserve being redeemed from; must match module state. |
+| `4` | `lending_market_authority` | no | no | Klend PDA authority for the lending market. |
+| `5` | `reserve_liquidity_mint` | no | no | Underlying/liquidity mint returned by the reserve. |
+| `6` | `reserve_collateral_mint` | yes | no | Collateral/kToken mint burned by Klend during redeem. |
+| `7` | `reserve_liquidity_supply` | yes | no | Reserve liquidity supply token account sending returned liquidity. |
+| `8` | `vault_collateral_account` | yes | no | Module-owned collateral/kToken account used as source collateral. |
+| `9` | `vault_token_account` | yes | no | Vault-owned underlying token account receiving returned liquidity. |
+| `10` | `token_program` | no | no | Classic SPL Token program required by Klend redeem. |
+| `11` | `liquidity_token_program` | no | no | SPL Token program used by liquidity accounts. |
+| `12` | `klend_program` | no | no | Kamino/Klend program account included for CPI invocation. |
+| `13` | `instruction_sysvar` | no | no | Instructions sysvar required by the Klend redeem instruction. |
+
+Full CPI account order seen by `kamino_yield_module.withdraw`:
+
+```text
+module_call_authority,
+module_config,
+kamino_module_state,
+lending_market,
+kamino_reserve,
+lending_market_authority,
+reserve_liquidity_mint,
+reserve_collateral_mint,
+reserve_liquidity_supply,
+vault_collateral_account,
+vault_token_account,
+token_program,
+liquidity_token_program,
+klend_program,
+instruction_sysvar
+```
+
+This order intentionally mirrors `klend_interface::instructions::withdraw::RedeemReserveCollateralAccounts`, after the module's own `module_call_authority`, `module_config`, and `kamino_module_state` prefix.
+
+The vault should still have `vault_token_account` in its own `RecallFromModule` accounts so it can measure the before/after balance delta. The same account must also appear at index `9` in `remaining_accounts`, because the Kamino module needs it as the Klend redeem destination.
+
+The registered account that must match `ModuleEntry` is:
+
+```text
+kamino_module_state == module_entry.module_state
+```
+
+Unlike deposit, token-mode withdraw does not use `module_entry.module_underlying_token_account`: the module's deployed capital is represented by `vault_collateral_account`, and the returned underlying goes directly to `vault_token_account`. The vault protects itself by checking the actual `vault_token_account` balance delta after CPI.
+
+The Kamino module should validate:
+
+1. `module_call_authority` is the PDA `[b"module_call_authority", kamino_module_state.vault]` under `kamino_module_state.vault_program_id`;
+2. `module_config.vault == kamino_module_state.vault`;
+3. `module_config.vault_program_id == kamino_module_state.vault_program_id`;
+4. `module_config.kamino_reserve == kamino_module_state.kamino_reserve`;
+5. `module_config.lending_market == kamino_module_state.lending_market`;
+6. `kamino_module_state.module_type == MODULE_TYPE_TOKEN`;
+7. `vault_collateral_account.owner == kamino_module_state.key()`;
+8. `vault_token_account.mint == reserve_liquidity_mint.key()`.
+
+The module translates the requested underlying `amount` into the collateral amount needed by Klend, rounding up so that the vault receives at least the requested underlying when liquidity is available. After the Klend CPI, the module updates `cached_nav` from the remaining collateral balance and the reserve exchange rate.
+
+### Mock Local Recall Harness
+
+The mock module should expose the same standard module interface as Kamino:
+
+```text
+withdraw(amount: u64)
+```
+
+This lets `vault.recall_from_module` be tested locally without real Kamino/Klend accounts. The mock withdraw implementation does not redeem collateral; it simply transfers underlying from the mock module token account back to the vault token account, then updates the standard `cached_nav` header.
+
+As with every standard module call, the vault injects `module_call_authority` as the first CPI account:
+
+```text
+0. module_call_authority          signer, readonly, added by vault.recall_from_module
+```
+
+For mock withdraw tests, pass `remaining_accounts` in exactly this order:
+
+| Index in `remaining_accounts` | Mock withdraw account | Writable | Signer | Purpose |
+|---:|---|---|---|---|
+| `0` | `mock_module_state` | yes | no | Module PDA state; stores standard `cached_nav` and vault binding. |
+| `1` | `mock_module_authority` | no | no | Mock module PDA authority that owns and signs for the module token account. |
+| `2` | `underlying_mint` | no | no | Underlying mint for transfer_checked. |
+| `3` | `module_token_account` | yes | no | Mock module underlying account used as source liquidity. |
+| `4` | `vault_token_account` | yes | no | Vault-owned underlying account receiving recalled liquidity. |
+| `5` | `token_program` | no | no | SPL Token program. |
+
+Full CPI account order seen by `mock_yield_module.withdraw`:
+
+```text
+module_call_authority,
+mock_module_state,
+mock_module_authority,
+underlying_mint,
+module_token_account,
+vault_token_account,
+token_program
+```
+
+The mock module validates that `module_call_authority` is the PDA `[b"module_call_authority", mock_module_state.vault]` under `mock_module_state.vault_program_id`. This makes direct client calls fail in the same way they should fail for Kamino.
+
+### Current Generic Module Contract
+
+This is the interface contract to keep stable while adding real adapters:
+
+1. Every module state starts with the standard header: `bump`, `vault`, `cached_nav`, `last_updated_slot`.
+2. The vault stores the registered `module_state` and `module_underlying_token_account` in `ModuleEntry`.
+3. The vault injects `module_call_authority` as the first account for every standard module CPI.
+4. Modules validate `module_call_authority` against the stored `vault_program_id`.
+5. `deposit(amount)` means the vault already staged exactly `amount` underlying into the registered module token account.
+6. `withdraw(amount)` means the module must return at least `amount` underlying into the vault token account.
+7. After either capital movement, the module updates its own `cached_nav`, and the vault atomically mirrors it into `module_entry.cached_nav` and `vault.modules_nav_total`.
+
+Protocol-specific accounts remain outside this generic contract and are supplied as `remaining_accounts` in the exact order documented for each module.
+
+### Implementation Plan For Recall
+
+Current implementation status:
+
+1. Done: add `MODULE_CALL_AUTHORITY_SEED` to the vault program and derive `module_call_authority` as `[b"module_call_authority", vault]`.
+2. Done: add the expected vault program id to module configuration/state initialization, starting with Kamino and the mock harness.
+3. Done: refactor the existing deposit path so `deploy_to_module`, `kamino_yield_module.deposit`, and mock deposit use `module_call_authority` instead of the vault PDA signer.
+4. Done earlier for deposit; new recall tests are still pending by choice.
+5. Done: decide and document the exact Kamino token-mode `remaining_accounts` order for `withdraw(amount)`.
+6. Done: add `kamino_yield_module.withdraw` for token-mode redeem.
+7. Done: add `vault.recall_from_module` with raw CPI to `global:withdraw`.
+8. Done: adapt the mock module as a local harness for generic recall.
+9. Pending: add focused tests around returned amount, NAV update, and shutdown behavior.
+
+### Open Recall Questions
+
+1. Should manager recall allow partial success, or should it always require `actual_returned >= requested_underlying_amount`? Current recommendation: require full requested amount.
+2. Should a future user-withdraw processing path be allowed to recall from modules automatically, or should only the manager recall capital first?
 
 ## Dependency Strategy
 
@@ -771,9 +1124,14 @@ These non-zero raw-byte tests likely need either Rust-side parser tests, validat
 11. Add raw byte readers and NAV tests.
 12. Design token-mode deposit into Kamino.
 13. Implement token-mode deposit only after the deposit account model is clear.
+14. Design generic recall/withdraw contract.
+15. Add `module_call_authority` and refactor deposit authentication to use it.
+16. Document Kamino withdraw `remaining_accounts` order.
+17. Implement token-mode recall from Kamino.
 
 ## Open Questions
 
 1. Should Kamino module PDAs include `policy_seed` now, or stay one-per-vault for the first implementation?
 2. Which real Kamino/Klend market, reserve, and token accounts should be used for a devnet end-to-end playground?
-3. How should the future recall/withdraw path from Kamino be shaped, and what account order will it require?
+3. Should manager recall allow partial success, or should it always require `actual_returned >= requested_underlying_amount`? Current recommendation: require full requested amount.
+4. Should a future user-withdraw processing path be allowed to recall from modules automatically, or should only the manager recall capital first?

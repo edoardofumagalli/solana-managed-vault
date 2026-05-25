@@ -6,6 +6,7 @@ use anchor_spl::{
 
 use crate::{
     constants::{MOCK_MODULE_AUTHORITY_SEED, MOCK_MODULE_STATE_SEED},
+    errors::MockYieldModuleError,
     events::MockModuleInitializedEvent,
     state::MockModuleState,
 };
@@ -53,7 +54,13 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<Initialize>) -> Result<()> {
+pub fn handler(ctx: Context<Initialize>, vault_program_id: Pubkey) -> Result<()> {
+    require_keys_neq!(
+        vault_program_id,
+        Pubkey::default(),
+        MockYieldModuleError::InvalidVaultProgram
+    );
+
     let clock = Clock::get()?;
 
     ctx.accounts.mock_module_state.set_inner(MockModuleState {
@@ -61,6 +68,7 @@ pub fn handler(ctx: Context<Initialize>) -> Result<()> {
         vault: ctx.accounts.vault.key(),
         cached_nav: 0,
         last_updated_slot: clock.slot,
+        vault_program_id,
         underlying_mint: ctx.accounts.underlying_mint.key(),
         module_token_account: ctx.accounts.module_token_account.key(),
         module_authority_bump: ctx.bumps.mock_module_authority,

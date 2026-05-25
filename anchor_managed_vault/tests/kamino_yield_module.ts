@@ -144,6 +144,7 @@ async function initializeKaminoModule(
 ): Promise<void> {
     await kaminoYieldModuleProgram.methods
         .initialize({
+            vaultProgramId: program.programId,
             lendingMarket: setup.lendingMarket,
             kaminoReserve: setup.kaminoReserve,
             moduleType,
@@ -176,6 +177,7 @@ describe("kamino_yield_module", () => {
 
         assert.equal(moduleConfig.bump, setup.moduleConfigBump);
         assertPublicKeyEquals(moduleConfig.vault, setup.vault);
+        assertPublicKeyEquals(moduleConfig.vaultProgramId, program.programId);
         assertPublicKeyEquals(moduleConfig.lendingMarket, setup.lendingMarket);
         assertPublicKeyEquals(moduleConfig.kaminoReserve, setup.kaminoReserve);
         assert.equal(moduleConfig.moduleType, MODULE_TYPE_TOKEN);
@@ -184,6 +186,7 @@ describe("kamino_yield_module", () => {
         assert.equal(moduleState.bump, setup.kaminoModuleStateBump);
         assertPublicKeyEquals(moduleState.vault, setup.vault);
         assert.equal(moduleState.cachedNav.toString(), "0");
+        assertPublicKeyEquals(moduleState.vaultProgramId, program.programId);
         assert.isTrue(moduleState.lastUpdatedSlot.gt(new anchor.BN(0)));
         assertPublicKeyEquals(moduleState.kaminoReserve, setup.kaminoReserve);
         assertPublicKeyEquals(moduleState.lendingMarket, setup.lendingMarket);
@@ -401,6 +404,7 @@ describe("kamino_yield_module", () => {
 
         assertPublicKeyEquals(moduleState.vault, setup.vault);
         assert.equal(moduleState.cachedNav.toString(), "0");
+        assertPublicKeyEquals(moduleState.vaultProgramId, program.programId);
 
         assertPublicKeyEquals(moduleEntryState.vault, setup.vault);
         assertPublicKeyEquals(

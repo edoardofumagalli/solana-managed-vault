@@ -15,6 +15,7 @@ const USER_VAULT_POSITION_SEED = Buffer.from("user_vault_position");
 const ESCROW_SHARE_SEED = Buffer.from("escrow_share");
 const MANAGER_WITHDRAW_REQUEST_SEED = Buffer.from("manager_withdraw_request");
 const MODULE_ENTRY_SEED = Buffer.from("module_entry");
+const MODULE_CALL_AUTHORITY_SEED = Buffer.from("module_call_authority");
 const MOCK_MODULE_STATE_SEED = Buffer.from("mock_module_state");
 const MOCK_MODULE_AUTHORITY_SEED = Buffer.from("mock_module_authority");
 const KAMINO_MODULE_CONFIG_SEED = Buffer.from("module_config");
@@ -134,6 +135,17 @@ export function deriveModuleEntryPda(
             moduleProgramId.toBuffer(),
             policySeedBytes,
         ],
+        program.programId
+    );
+}
+
+// Derives the non-custodial PDA used only to authenticate vault-initiated
+// CPIs into external modules. This PDA must not own vault funds or mint authority.
+export function deriveModuleCallAuthorityPda(
+    vault: PublicKey
+): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+        [MODULE_CALL_AUTHORITY_SEED, vault.toBuffer()],
         program.programId
     );
 }
