@@ -1,0 +1,110 @@
+@startuml recall_from_module_sequence
+title recall_from_module(amount) - generic vault/module recall flow
+
+skinparam sequenceMessageAlign center
+skinparam ParticipantPadding 18
+skinparam BoxPadding 12
+autonumber
+
+actor Manager
+participant "Client / Anchor provider" as Client
+
+box "Vault program" #E8F3FF
+participant "anchor_managed_vault\nVault instruction" as VaultIx
+database "Vault account" as VaultState
+database "ModuleEntry PDA" as ModuleEntry
+end box
+
+participant "SPL Token program" as TokenProgram
+
+box "Registered module program" #F2F9E8
+participant "module.withdraw(amount)\nKamino or mock" as ModuleIx
+database "Module state\nstandard header" as ModuleState
+end box
+
+participant "Kamino / Klend program\nKamino adapter only" as Klend
+collections "Token accounts" as TokenAccounts
+
+note over VaultIx,ModuleIx
+Standard recall interface:
+- vault calls raw CPI to global:withdraw(amount)
+- amount is denominated in underlying tokens
+- module must return at least amount to vault_token_account
+- vault verifies the actual vault_token_account balance delta after CPI
+end note
+
+Manager -> Client: Request recall_from_module(amount)
+Client -> VaultIx: Send instruction\naccounts + remaining_accounts
+activate VaultIx
+
+VaultIx -> VaultState: Anchor account checks\nPDA [VAULT_SEED, underlying_mint]\nhas_one manager, underlying_mint, vault_token_account
+VaultIx -> ModuleEntry: Anchor account checks\nPDA [MODULE_ENTRY_SEED, vault, module_program, policy_seed]\nactive module, expected module program
+VaultIx -> VaultIx: require amount > 0
+note right of VaultIx
+No shutdown guard here.
+Recall is allowed during emergency shutdown
+because it reduces strategy exposure.
+end note
+
+VaultIx -> TokenAccounts: snapshot vault_token_account.amount\n= vault_token_balance_before
+VaultIx -> VaultIx: Derive module_call_authority signer\n[MODULE_CALL_AUTHORITY_SEED, vault]
+VaultIx -> ModuleState: Locate module_entry.module_state\nin remaining_accounts
+VaultIx -> ModuleState: require owner == module_program
+VaultIx -> TokenAccounts: require remaining_accounts contains\nvault_token_account
+VaultIx -> VaultIx: Build raw CPI instruction\ndiscriminator = sha256("global:withdraw")[0..8]\ndata = discriminator + amount
+
+VaultIx -> ModuleIx: invoke_signed withdraw(amount)\naccount[0] = module_call_authority signer\naccounts[1..] = module remaining_accounts
+activate ModuleIx
+
+ModuleIx -> ModuleIx: require amount > 0
+ModuleIx -> ModuleIx: Validate module_call_authority PDA\nusing module_state.vault and stored vault_program_id
+
+alt Kamino token-mode adapter
+    ModuleIx -> ModuleState: Validate ModuleConfig and KaminoModuleState\nvault, vault_program_id, reserve, lending_market
+    ModuleIx -> ModuleIx: require module_type == Token
+    ModuleIx -> ModuleState: Read reserve exchange rate\ntotal_liquidity and collateral_supply
+    ModuleIx -> ModuleIx: collateral_amount = ceil(amount\n* collateral_supply / total_liquidity)
+    ModuleIx -> TokenAccounts: require vault_collateral_account.amount >= collateral_amount
+    ModuleIx -> TokenAccounts: snapshot vault_token_account.amount
+    ModuleIx -> ModuleIx: Derive kamino_module_state signer\n[KAMINO_MODULE_STATE_SEED, vault]
+    ModuleIx -> Klend: CPI redeem_reserve_collateral(collateral_amount)\nsource = vault_collateral_account\ndestination = vault_token_account\nowner = kamino_module_state PDA signer
+    Klend --> ModuleIx: Redeem ok; underlying returned
+    ModuleIx -> TokenAccounts: reload vault_collateral_account\nreload vault_token_account
+    ModuleIx -> ModuleIx: returned_amount = vault_token_after - before
+    ModuleIx -> ModuleIx: require returned_amount >= amount
+    ModuleIx -> ModuleState: cached_nav = remaining collateral\npriced with reserve exchange rate
+else Mock local harness
+    ModuleIx -> TokenAccounts: require module_token_account.amount >= amount
+    ModuleIx -> ModuleIx: Derive mock_module_authority signer\n[MOCK_MODULE_AUTHORITY_SEED, mock_module_state]
+    ModuleIx -> TokenProgram: CPI transfer_checked(amount)\nfrom module_token_account\nto vault_token_account\nauthority = mock_module_authority PDA signer
+    TokenProgram -> TokenAccounts: Move amount back to vault idle liquidity
+    TokenProgram --> ModuleIx: Transfer ok
+    ModuleIx -> TokenAccounts: reload module_token_account
+    ModuleIx -> ModuleState: cached_nav = module_token_account.amount
+end
+
+ModuleIx -> ModuleState: last_updated_slot = Clock.slot
+ModuleIx -> ModuleIx: emit module withdraw event
+ModuleIx --> VaultIx: Module CPI returns ok
+deactivate ModuleIx
+
+VaultIx -> TokenAccounts: reload vault_token_account
+VaultIx -> VaultIx: returned_amount = vault_token_after\n- vault_token_balance_before
+VaultIx -> VaultIx: require returned_amount >= amount
+VaultIx -> ModuleState: Read standard header bytes\nvault at offset 9\ncached_nav at offset 41
+VaultIx -> ModuleState: require header vault == vault account
+VaultIx -> ModuleEntry: old_cached_nav = module_entry.cached_nav\nmodule_entry.cached_nav = new_cached_nav\nnav_last_updated_slot = Clock.slot
+VaultIx -> VaultState: modules_nav_total = modules_nav_total\n- old_cached_nav + new_cached_nav
+VaultIx -> VaultIx: emit ModuleCapitalRecalledFromModuleEvent
+VaultIx --> Client: Transaction success
+deactivate VaultIx
+Client --> Manager: Signature / confirmation
+
+note over VaultIx,ModuleIx
+Safety boundary:
+module_call_authority authenticates the CPI origin but never owns funds.
+The module may receive vault_token_account as a destination during recall,
+but it never receives the vault PDA as a signer.
+end note
+
+@enduml

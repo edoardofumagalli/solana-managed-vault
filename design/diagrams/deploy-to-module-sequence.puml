@@ -1,0 +1,103 @@
+@startuml deploy_to_module_sequence
+title deploy_to_module(amount) - generic vault/module deploy flow
+
+skinparam sequenceMessageAlign center
+skinparam ParticipantPadding 18
+skinparam BoxPadding 12
+autonumber
+
+actor Manager
+participant "Client / Anchor provider" as Client
+
+box "Vault program" #E8F3FF
+participant "anchor_managed_vault\nVault instruction" as VaultIx
+database "Vault account" as VaultState
+database "ModuleEntry PDA" as ModuleEntry
+end box
+
+participant "SPL Token program" as TokenProgram
+
+box "Registered module program" #F2F9E8
+participant "module.deposit(amount)\nKamino or mock" as ModuleIx
+database "Module state\nstandard header" as ModuleState
+end box
+
+participant "Kamino / Klend program\nKamino adapter only" as Klend
+collections "Token accounts" as TokenAccounts
+
+note over VaultIx,ModuleIx
+Standard module interface:
+- vault calls raw CPI to global:deposit(amount)
+- account[0] is module_call_authority, signed by the vault program
+- all other accounts are module-specific remaining_accounts
+- module_state must expose the standard header:
+  bump, vault, cached_nav, last_updated_slot
+end note
+
+Manager -> Client: Request deploy_to_module(amount)
+Client -> VaultIx: Send instruction\naccounts + remaining_accounts
+activate VaultIx
+
+VaultIx -> VaultState: Anchor account checks\nPDA [VAULT_SEED, underlying_mint]\nhas_one manager, underlying_mint, vault_token_account
+VaultIx -> ModuleEntry: Anchor account checks\nPDA [MODULE_ENTRY_SEED, vault, module_program, policy_seed]\nactive module, expected module program, expected module token account
+VaultIx -> VaultIx: require amount > 0
+VaultIx -> VaultIx: require vault is not shutdown
+VaultIx -> TokenAccounts: Read vault_token_account.amount
+VaultIx -> VaultIx: require idle liquidity >= amount
+VaultIx -> VaultIx: total_assets = vault_token_account.amount\n+ float_outstanding + modules_nav_total
+VaultIx -> VaultIx: deployed_value_after = float_outstanding\n+ modules_nav_total + amount
+VaultIx -> VaultIx: checked_float_cap(total_assets, deployed_value_after, max_float_bps)
+
+VaultIx -> VaultIx: Derive vault PDA signer seeds\n[VAULT_SEED, underlying_mint, vault.bump]
+VaultIx -> TokenProgram: CPI transfer_checked(amount)\nfrom vault_token_account\nto module_underlying_token_account\nauthority = vault PDA signer
+TokenProgram -> TokenAccounts: Move exact amount into module staging account
+TokenProgram --> VaultIx: Transfer ok
+
+VaultIx -> VaultIx: Derive module_call_authority signer\n[MODULE_CALL_AUTHORITY_SEED, vault]
+VaultIx -> ModuleState: Locate module_entry.module_state\nin remaining_accounts
+VaultIx -> ModuleState: require owner == module_program\nrequire header can be read later
+VaultIx -> TokenAccounts: require remaining_accounts contains\nmodule_underlying_token_account
+VaultIx -> VaultIx: Build raw CPI instruction\ndiscriminator = sha256("global:deposit")[0..8]\ndata = discriminator + amount
+
+VaultIx -> ModuleIx: invoke_signed deposit(amount)\naccount[0] = module_call_authority signer\naccounts[1..] = module remaining_accounts
+activate ModuleIx
+
+ModuleIx -> ModuleIx: require amount > 0
+ModuleIx -> ModuleIx: Validate module_call_authority PDA\nusing module_state.vault and stored vault_program_id
+
+alt Kamino token-mode adapter
+    ModuleIx -> ModuleState: Validate ModuleConfig and KaminoModuleState\nvault, vault_program_id, reserve, lending_market
+    ModuleIx -> ModuleIx: require module_type == Token
+    ModuleIx -> TokenAccounts: require module_underlying_token_account.amount >= amount
+    ModuleIx -> ModuleIx: Derive kamino_module_state signer\n[KAMINO_MODULE_STATE_SEED, vault]
+    ModuleIx -> Klend: CPI deposit_reserve_liquidity(amount)\nsource = module_underlying_token_account\ndestination = vault_collateral_account\nowner = kamino_module_state PDA signer
+    Klend --> ModuleIx: Deposit ok; collateral received
+    ModuleIx -> TokenAccounts: reload vault_collateral_account
+    ModuleIx -> ModuleState: Read reserve exchange rate\ncalculate cached_nav from collateral balance
+else Mock local harness
+    ModuleIx -> TokenAccounts: require module_token_account.amount >= amount
+    ModuleIx -> ModuleState: cached_nav = module_token_account.amount
+end
+
+ModuleIx -> ModuleState: last_updated_slot = Clock.slot
+ModuleIx -> ModuleIx: emit module deposit event
+ModuleIx --> VaultIx: Module CPI returns ok
+deactivate ModuleIx
+
+VaultIx -> ModuleState: Read standard header bytes\nvault at offset 9\ncached_nav at offset 41
+VaultIx -> ModuleState: require header vault == vault account
+VaultIx -> ModuleEntry: old_cached_nav = module_entry.cached_nav\nmodule_entry.cached_nav = new_cached_nav\nnav_last_updated_slot = Clock.slot
+VaultIx -> VaultState: modules_nav_total = modules_nav_total\n- old_cached_nav + new_cached_nav
+VaultIx -> VaultIx: emit ModuleCapitalDeployedEvent
+VaultIx --> Client: Transaction success
+deactivate VaultIx
+Client --> Manager: Signature / confirmation
+
+note over VaultIx,TokenProgram
+Safety boundary:
+the module never receives signer authority over vault_token_account.
+The vault first transfers exactly amount into the registered module token account,
+then calls the module with module_call_authority only for authentication.
+end note
+
+@enduml

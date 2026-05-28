@@ -213,42 +213,16 @@ async function depositIntoVault(
         .rpc();
 }
 
-async function deployToMockModule(
+async function deployToGenericModule(
     setup: RegisteredModuleSetup,
     amount: number,
     signer: Keypair | null = null,
     signerPublicKey: PublicKey = manager
 ): Promise<void> {
     const builder = program.methods
-        .deployToMockModule(new anchor.BN(amount))
-        .accountsPartial({
-            manager: signerPublicKey,
-            vault: setup.vault,
-            moduleEntry: setup.moduleEntry,
-            mockModuleState: setup.mockModuleState,
-            underlyingMint: setup.underlyingMint,
-            vaultTokenAccount: setup.vaultTokenAccount,
-            moduleTokenAccount: setup.moduleTokenAccount,
-            mockYieldModuleProgram: mockYieldModuleProgram.programId,
-            tokenProgram: TOKEN_PROGRAM_ID,
-        });
-
-    if (signer) {
-        await builder.signers([signer]).rpc();
-        return;
-    }
-
-    await builder.rpc();
-}
-
-async function deployToGenericModule(
-    setup: RegisteredModuleSetup,
-    amount: number
-): Promise<void> {
-    await program.methods
         .deployToModule(new anchor.BN(amount))
         .accountsPartial({
-            manager,
+            manager: signerPublicKey,
             vault: setup.vault,
             moduleEntry: setup.moduleEntry,
             underlyingMint: setup.underlyingMint,
@@ -268,31 +242,7 @@ async function deployToGenericModule(
                 isWritable: true,
                 isSigner: false,
             },
-        ])
-        .rpc();
-}
-
-
-async function recallFromMockModule(
-    setup: RegisteredModuleSetup,
-    amount: number,
-    signer: Keypair | null = null,
-    signerPublicKey: PublicKey = manager
-): Promise<void> {
-    const builder = program.methods
-        .recallFromMockModule(new anchor.BN(amount))
-        .accountsPartial({
-            manager: signerPublicKey,
-            vault: setup.vault,
-            moduleEntry: setup.moduleEntry,
-            mockModuleState: setup.mockModuleState,
-            mockModuleAuthority: setup.mockModuleAuthority,
-            underlyingMint: setup.underlyingMint,
-            moduleTokenAccount: setup.moduleTokenAccount,
-            vaultTokenAccount: setup.vaultTokenAccount,
-            mockYieldModuleProgram: mockYieldModuleProgram.programId,
-            tokenProgram: TOKEN_PROGRAM_ID,
-        });
+        ]);
 
     if (signer) {
         await builder.signers([signer]).rpc();
@@ -302,20 +252,65 @@ async function recallFromMockModule(
     await builder.rpc();
 }
 
-async function syncModuleNav(setup: RegisteredModuleSetup): Promise<void> {
-    await program.methods
-        .syncModuleNav()
+async function recallFromGenericModule(
+    setup: RegisteredModuleSetup,
+    amount: number,
+    signer: Keypair | null = null,
+    signerPublicKey: PublicKey = manager
+): Promise<void> {
+    const builder = program.methods
+        .recallFromModule(new anchor.BN(amount))
         .accountsPartial({
-            cranker: manager,
+            manager: signerPublicKey,
             vault: setup.vault,
             moduleEntry: setup.moduleEntry,
-            moduleState: setup.mockModuleState,
+            underlyingMint: setup.underlyingMint,
+            vaultTokenAccount: setup.vaultTokenAccount,
             moduleProgram: mockYieldModuleProgram.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
         })
-        .rpc();
+        .remainingAccounts([
+            {
+                pubkey: setup.mockModuleState,
+                isWritable: true,
+                isSigner: false,
+            },
+            {
+                pubkey: setup.mockModuleAuthority,
+                isWritable: false,
+                isSigner: false,
+            },
+            {
+                pubkey: setup.underlyingMint,
+                isWritable: false,
+                isSigner: false,
+            },
+            {
+                pubkey: setup.moduleTokenAccount,
+                isWritable: true,
+                isSigner: false,
+            },
+            {
+                pubkey: setup.vaultTokenAccount,
+                isWritable: true,
+                isSigner: false,
+            },
+            {
+                pubkey: TOKEN_PROGRAM_ID,
+                isWritable: false,
+                isSigner: false,
+            },
+        ]);
+
+    if (signer) {
+        await builder.signers([signer]).rpc();
+        return;
+    }
+
+    await builder.rpc();
 }
 
-describe("deploy_to_mock_module", () => {
+describe("generic module dispatch with mock harness", () => {
     it("deploys vault capital through the generic module interface and updates NAV atomically", async () => {
         const setup = await setupRegisteredModule(new anchor.BN(11));
         const vaultDepositAmount = 1_000_000;
@@ -348,53 +343,15 @@ describe("deploy_to_mock_module", () => {
         assert.equal(vaultState.modulesNavTotal.toString(), deployAmount.toString());
     });
 
-    it("deploys vault capital into the mock module and syncs NAV", async () => {
-        const setup = await setupRegisteredModule();
-        const vaultDepositAmount = 1_000_000;
-        const deployAmount = 200_000;
-
-        await depositIntoVault(setup, vaultDepositAmount);
-        await deployToMockModule(setup, deployAmount);
-
-        const vaultTokenAccount = await fetchTokenAccount(
-            setup.vaultTokenAccount
-        );
-        const moduleTokenAccount = await fetchTokenAccount(
-            setup.moduleTokenAccount
-        );
-        const mockModuleState = await mockYieldModuleProgram.account.mockModuleState.fetch(
-            setup.mockModuleState
-        );
-        let vaultState = await program.account.vault.fetch(setup.vault);
-
-        assert.equal(
-            vaultTokenAccount.amount.toString(),
-            (vaultDepositAmount - deployAmount).toString()
-        );
-        assert.equal(moduleTokenAccount.amount.toString(), deployAmount.toString());
-        assert.equal(mockModuleState.cachedNav.toString(), deployAmount.toString());
-        assert.equal(vaultState.modulesNavTotal.toString(), "0");
-
-        await syncModuleNav(setup);
-
-        const moduleEntryState = await program.account.moduleEntry.fetch(
-            setup.moduleEntry
-        );
-        vaultState = await program.account.vault.fetch(setup.vault);
-
-        assert.equal(moduleEntryState.cachedNav.toString(), deployAmount.toString());
-        assert.equal(vaultState.modulesNavTotal.toString(), deployAmount.toString());
-    });
-
     it("rejects zero amount", async () => {
         const setup = await setupRegisteredModule(new anchor.BN(2));
 
         await depositIntoVault(setup, 100_000);
 
         try {
-            await deployToMockModule(setup, 0);
+            await deployToGenericModule(setup, 0);
 
-            assert.fail("Expected deploy_to_mock_module to reject zero amount");
+            assert.fail("Expected deploy_to_module to reject zero amount");
         } catch (error) {
             assert.include(String(error), "InvalidAmount");
         }
@@ -417,14 +374,14 @@ describe("deploy_to_mock_module", () => {
         await depositIntoVault(setup, 100_000);
 
         try {
-            await deployToMockModule(
+            await deployToGenericModule(
                 setup,
                 10_000,
                 nonManager,
                 nonManager.publicKey
             );
 
-            assert.fail("Expected deploy_to_mock_module to reject non-manager");
+            assert.fail("Expected deploy_to_module to reject non-manager");
         } catch (error) {
             assert.include(String(error), "UnauthorizedManager");
         }
@@ -446,9 +403,9 @@ describe("deploy_to_mock_module", () => {
         await depositIntoVault(setup, 100_000);
 
         try {
-            await deployToMockModule(setup, 150_000);
+            await deployToGenericModule(setup, 150_000);
 
-            assert.fail("Expected deploy_to_mock_module to reject insufficient liquidity");
+            assert.fail("Expected deploy_to_module to reject insufficient liquidity");
         } catch (error) {
             assert.include(String(error), "InsufficientLiquidity");
         }
@@ -474,9 +431,8 @@ describe("deploy_to_mock_module", () => {
         const expectedRemainingModuleNav = deployAmount - recallAmount;
 
         await depositIntoVault(setup, vaultDepositAmount);
-        await deployToMockModule(setup, deployAmount);
-        await syncModuleNav(setup);
-        await recallFromMockModule(setup, recallAmount);
+        await deployToGenericModule(setup, deployAmount);
+        await recallFromGenericModule(setup, recallAmount);
 
         const vaultTokenAccount = await fetchTokenAccount(
             setup.vaultTokenAccount
@@ -487,7 +443,10 @@ describe("deploy_to_mock_module", () => {
         const mockModuleState = await mockYieldModuleProgram.account.mockModuleState.fetch(
             setup.mockModuleState
         );
-        let vaultState = await program.account.vault.fetch(setup.vault);
+        const moduleEntryState = await program.account.moduleEntry.fetch(
+            setup.moduleEntry
+        );
+        const vaultState = await program.account.vault.fetch(setup.vault);
 
         assert.equal(
             vaultTokenAccount.amount.toString(),
@@ -501,15 +460,6 @@ describe("deploy_to_mock_module", () => {
             mockModuleState.cachedNav.toString(),
             expectedRemainingModuleNav.toString()
         );
-        assert.equal(vaultState.modulesNavTotal.toString(), deployAmount.toString());
-
-        await syncModuleNav(setup);
-
-        const moduleEntryState = await program.account.moduleEntry.fetch(
-            setup.moduleEntry
-        );
-        vaultState = await program.account.vault.fetch(setup.vault);
-
         assert.equal(
             moduleEntryState.cachedNav.toString(),
             expectedRemainingModuleNav.toString()
@@ -524,12 +474,12 @@ describe("deploy_to_mock_module", () => {
         const setup = await setupRegisteredModule(new anchor.BN(7));
 
         await depositIntoVault(setup, 100_000);
-        await deployToMockModule(setup, 20_000);
+        await deployToGenericModule(setup, 20_000);
 
         try {
-            await recallFromMockModule(setup, 0);
+            await recallFromGenericModule(setup, 0);
 
-            assert.fail("Expected recall_from_mock_module to reject zero amount");
+            assert.fail("Expected recall_from_module to reject zero amount");
         } catch (error) {
             assert.include(String(error), "InvalidAmount");
         }
@@ -550,17 +500,17 @@ describe("deploy_to_mock_module", () => {
         const nonManager = Keypair.generate();
 
         await depositIntoVault(setup, 100_000);
-        await deployToMockModule(setup, 20_000);
+        await deployToGenericModule(setup, 20_000);
 
         try {
-            await recallFromMockModule(
+            await recallFromGenericModule(
                 setup,
                 10_000,
                 nonManager,
                 nonManager.publicKey
             );
 
-            assert.fail("Expected recall_from_mock_module to reject non-manager");
+            assert.fail("Expected recall_from_module to reject non-manager");
         } catch (error) {
             assert.include(String(error), "UnauthorizedManager");
         }
@@ -580,12 +530,12 @@ describe("deploy_to_mock_module", () => {
         const setup = await setupRegisteredModule(new anchor.BN(9));
 
         await depositIntoVault(setup, 100_000);
-        await deployToMockModule(setup, 20_000);
+        await deployToGenericModule(setup, 20_000);
 
         try {
-            await recallFromMockModule(setup, 20_001);
+            await recallFromGenericModule(setup, 20_001);
 
-            assert.fail("Expected recall_from_mock_module to reject insufficient liquidity");
+            assert.fail("Expected recall_from_module to reject insufficient liquidity");
         } catch (error) {
             assert.include(String(error), "InsufficientLiquidity");
         }
@@ -608,7 +558,7 @@ describe("deploy_to_mock_module", () => {
         const recallAmount = 5_000;
 
         await depositIntoVault(setup, vaultDepositAmount);
-        await deployToMockModule(setup, deployAmount);
+        await deployToGenericModule(setup, deployAmount);
 
         await program.methods
             .activateEmergencyShutdown()
@@ -619,7 +569,7 @@ describe("deploy_to_mock_module", () => {
             .signers([setup.emergencyAdmin])
             .rpc();
 
-        await recallFromMockModule(setup, recallAmount);
+        await recallFromGenericModule(setup, recallAmount);
 
         const vaultTokenAccount = await fetchTokenAccount(
             setup.vaultTokenAccount
@@ -646,9 +596,9 @@ describe("deploy_to_mock_module", () => {
         await depositIntoVault(setup, 1_000_000);
 
         try {
-            await deployToMockModule(setup, 200_001);
+            await deployToGenericModule(setup, 200_001);
 
-            assert.fail("Expected deploy_to_mock_module to reject float cap breach");
+            assert.fail("Expected deploy_to_module to reject float cap breach");
         } catch (error) {
             assert.include(String(error), "FloatCapExceeded");
         }

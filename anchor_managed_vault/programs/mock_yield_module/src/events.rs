@@ -27,17 +27,6 @@ pub struct MockModuleDepositedEvent {
 }
 
 #[event]
-pub struct MockModuleCapitalReturnedEvent {
-    pub vault: Pubkey,
-    pub module_state: Pubkey,
-    pub vault_token_account: Pubkey,
-    pub module_token_account: Pubkey,
-    pub amount: u64,
-    pub cached_nav: u64,
-    pub slot: u64,
-}
-
-#[event]
 pub struct MockModuleWithdrawnEvent {
     pub vault: Pubkey,
     pub module_state: Pubkey,
