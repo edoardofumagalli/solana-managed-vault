@@ -23,6 +23,9 @@ pub enum KaminoYieldModuleError {
     #[msg("Invalid lending market.")]
     InvalidLendingMarket,
 
+    #[msg("Invalid oracle account.")]
+    InvalidOracleAccount,
+
     #[msg("Invalid obligation account.")]
     InvalidObligation,
 

@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
+use klend_interface::ReserveInfo;
 
-use crate::errors::KaminoYieldModuleError;
+use crate::{constants::KLEND_PROGRAM_ID, errors::KaminoYieldModuleError};
 
 const FRAC_BITS: u32 = 60;
 
@@ -21,6 +22,58 @@ const OBLIGATION_COLLATERAL_DEPOSITED_AMOUNT_OFFSET: usize = 32;
 const MAX_OBLIGATION_DEPOSITS: usize = 8;
 const MIN_OBLIGATION_LEN: usize =
     OBLIGATION_DEPOSITS_OFFSET + (MAX_OBLIGATION_DEPOSITS * OBLIGATION_COLLATERAL_SIZE);
+
+pub struct ReserveOracleAccounts {
+    pub pyth_oracle: Option<Pubkey>,
+    pub switchboard_price_oracle: Option<Pubkey>,
+    pub switchboard_twap_oracle: Option<Pubkey>,
+    pub scope_prices: Option<Pubkey>,
+}
+
+/// Reads the reserve oracle configuration using klend-interface's reserve parser.
+pub fn read_reserve_oracle_accounts(
+    reserve_key: Pubkey,
+    reserve_data: &[u8],
+) -> Result<ReserveOracleAccounts> {
+    let reserve_info = ReserveInfo::from_account_data(reserve_key, reserve_data)
+        .map_err(|_| error!(KaminoYieldModuleError::InvalidReserve))?;
+
+    Ok(ReserveOracleAccounts {
+        pyth_oracle: reserve_info.pyth_oracle,
+        switchboard_price_oracle: reserve_info.switchboard_price_oracle,
+        switchboard_twap_oracle: reserve_info.switchboard_twap_oracle,
+        scope_prices: reserve_info.scope_prices,
+    })
+}
+
+/// Validates one optional Klend account and returns the Option<Pubkey> expected by klend-interface.
+///
+/// If the reserve config contains an account, the caller must pass that exact account.
+/// If the reserve config does not contain it, the caller must pass KLEND_PROGRAM_ID
+/// as the placeholder used by klend-interface for missing optional accounts.
+pub fn optional_klend_account(
+    configured: Option<Pubkey>,
+    provided: Pubkey,
+) -> Result<Option<Pubkey>> {
+    match configured {
+        Some(expected) => {
+            require_keys_eq!(
+                provided,
+                expected,
+                KaminoYieldModuleError::InvalidOracleAccount
+            );
+            Ok(Some(expected))
+        }
+        None => {
+            require_keys_eq!(
+                provided,
+                KLEND_PROGRAM_ID,
+                KaminoYieldModuleError::InvalidOracleAccount
+            );
+            Ok(None)
+        }
+    }
+}
 
 /// Reads the minimum Kamino reserve fields needed to price collateral tokens.
 pub fn read_exchange_rate_components(reserve_data: &[u8]) -> Result<(u128, u128)> {
@@ -94,9 +147,11 @@ pub fn read_obligation_deposit_for_reserve(
                 .get(amount_offset..amount_offset + 8)
                 .ok_or_else(|| error!(KaminoYieldModuleError::InvalidObligation))?;
 
-            return Ok(u64::from_le_bytes(amount_bytes.try_into().map_err(|_| {
-                error!(KaminoYieldModuleError::InvalidObligation)
-            })?));
+            return Ok(u64::from_le_bytes(
+                amount_bytes
+                    .try_into()
+                    .map_err(|_| error!(KaminoYieldModuleError::InvalidObligation))?,
+            ));
         }
     }
 

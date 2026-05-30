@@ -335,30 +335,34 @@ nav = position_amount * total_liquidity / collateral_supply
 
 In token mode, `position_amount` is the collateral token balance. In obligation mode, it is read from the matching reserve slot inside the obligation account.
 
-The adapter reads selected Kamino reserve and obligation fields from raw account bytes. This keeps the integration lighter than depending on full heavy account deserialization, but it also makes offset correctness important.
+For NAV math, the adapter still reads selected Kamino reserve and obligation numeric fields from raw account bytes. For Klend reserve refreshes, it uses `klend_interface::ReserveInfo::from_account_data` to read the reserve oracle configuration, then validates the oracle accounts supplied by the caller. If an optional oracle is not configured on the reserve, the caller must pass `KLEND_PROGRAM_ID` as the placeholder expected by `klend-interface`.
 
 Token-mode `deposit(amount)`:
 
 1. Validates `module_call_authority`.
 2. Requires token mode.
 3. Requires enough underlying in the module underlying token account.
-4. Builds a Klend `deposit_reserve_liquidity` instruction through `klend_interface`.
-5. Uses the Kamino module state PDA as the owner signer.
-6. Receives collateral tokens in the vault collateral account.
-7. Recalculates cached NAV from the reserve exchange rate.
+4. Reads the reserve oracle configuration and validates the provided oracle accounts.
+5. Calls Klend `refresh_reserve`.
+6. Builds a Klend `deposit_reserve_liquidity` instruction through `klend_interface`.
+7. Uses the Kamino module state PDA as the owner signer.
+8. Receives collateral tokens in the vault collateral account.
+9. Recalculates cached NAV from the refreshed reserve exchange rate.
 
 Token-mode `withdraw(amount)`:
 
 1. Validates `module_call_authority`.
 2. Requires token mode.
-3. Reads the reserve exchange rate.
-4. Calculates the collateral amount to redeem, rounding up.
-5. Calls Klend `redeem_reserve_collateral`.
-6. Sends underlying back to the vault token account.
-7. Verifies that at least the requested underlying amount was returned.
-8. Recalculates cached NAV.
+3. Reads the reserve oracle configuration and validates the provided oracle accounts.
+4. Calls Klend `refresh_reserve`.
+5. Reads the refreshed reserve exchange rate.
+6. Calculates the collateral amount to redeem, rounding up.
+7. Calls Klend `redeem_reserve_collateral`.
+8. Sends underlying back to the vault token account.
+9. Verifies that at least the requested underlying amount was returned.
+10. Recalculates cached NAV.
 
-Current status: token-mode deposit/withdraw and NAV logic exist as an adapter prototype. Full production readiness still requires real Kamino account discovery, robust integration fixtures, and broader operational cleanup.
+Current status: token-mode deposit/withdraw, reserve refresh, and NAV logic exist as an adapter prototype. Full production readiness still requires real Kamino account discovery, robust integration fixtures, and broader operational cleanup.
 
 ## 13. Events And Observability
 

@@ -1,6 +1,12 @@
-use anchor_lang::{prelude::*, solana_program::program::invoke_signed};
+use anchor_lang::{
+    prelude::*,
+    solana_program::program::{invoke, invoke_signed},
+};
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
-use klend_interface::instructions::withdraw::{self, RedeemReserveCollateralAccounts};
+use klend_interface::instructions::{
+    refresh::{self, RefreshReserveAccounts},
+    withdraw::{self, RedeemReserveCollateralAccounts},
+};
 
 use crate::{
     constants::{
@@ -10,7 +16,8 @@ use crate::{
     events::KaminoModuleWithdrawnEvent,
     state::{KaminoModuleState, KaminoModuleType, ModuleConfig},
     utils::{
-        calculate_collateral_to_redeem_up, calculate_token_nav, read_exchange_rate_components,
+        calculate_collateral_to_redeem_up, calculate_token_nav, optional_klend_account,
+        read_exchange_rate_components, read_reserve_oracle_accounts,
     },
 };
 
@@ -62,6 +69,18 @@ pub struct Withdraw<'info> {
 
     /// CHECK: Klend validates that this is the correct lending market authority PDA.
     pub lending_market_authority: UncheckedAccount<'info>,
+
+    /// CHECK: Optional price oracle used by Klend refresh_reserve.
+    pub pyth_oracle: UncheckedAccount<'info>,
+
+    /// CHECK: Optional Switchboard price oracle used by Klend refresh_reserve.
+    pub switchboard_price_oracle: UncheckedAccount<'info>,
+
+    /// CHECK: Optional Switchboard TWAP oracle used by Klend refresh_reserve.
+    pub switchboard_twap_oracle: UncheckedAccount<'info>,
+
+    /// CHECK: Optional Scope prices account used by Klend refresh_reserve.
+    pub scope_prices: UncheckedAccount<'info>,
 
     #[account(
         mint::token_program = liquidity_token_program,
@@ -115,6 +134,51 @@ pub struct Withdraw<'info> {
     pub instruction_sysvar: UncheckedAccount<'info>,
 }
 
+impl<'info> Withdraw<'info> {
+    fn refresh_reserve(&self) -> Result<()> {
+        let reserve_data = self.kamino_reserve.try_borrow_data()?;
+        let oracle_accounts =
+            read_reserve_oracle_accounts(self.kamino_reserve.key(), &reserve_data)?;
+        drop(reserve_data);
+
+        let refresh_ix = refresh::refresh_reserve(RefreshReserveAccounts {
+            reserve: self.kamino_reserve.key(),
+            lending_market: self.lending_market.key(),
+            pyth_oracle: optional_klend_account(
+                oracle_accounts.pyth_oracle,
+                self.pyth_oracle.key(),
+            )?,
+            switchboard_price_oracle: optional_klend_account(
+                oracle_accounts.switchboard_price_oracle,
+                self.switchboard_price_oracle.key(),
+            )?,
+            switchboard_twap_oracle: optional_klend_account(
+                oracle_accounts.switchboard_twap_oracle,
+                self.switchboard_twap_oracle.key(),
+            )?,
+            scope_prices: optional_klend_account(
+                oracle_accounts.scope_prices,
+                self.scope_prices.key(),
+            )?,
+        });
+
+        invoke(
+            &refresh_ix,
+            &[
+                self.kamino_reserve.to_account_info(),
+                self.lending_market.to_account_info(),
+                self.pyth_oracle.to_account_info(),
+                self.switchboard_price_oracle.to_account_info(),
+                self.switchboard_twap_oracle.to_account_info(),
+                self.scope_prices.to_account_info(),
+                self.klend_program.to_account_info(),
+            ],
+        )?;
+
+        Ok(())
+    }
+}
+
 pub fn handler(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
     require!(amount > 0, KaminoYieldModuleError::InvalidAmount);
 
@@ -135,6 +199,8 @@ pub fn handler(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
         ctx.accounts.kamino_module_state.kamino_module_type()? == KaminoModuleType::Token,
         KaminoYieldModuleError::UnsupportedWithdrawMode
     );
+
+    ctx.accounts.refresh_reserve()?;
 
     let reserve_data = ctx.accounts.kamino_reserve.try_borrow_data()?;
     let (total_liquidity, collateral_supply) = read_exchange_rate_components(&reserve_data)?;
