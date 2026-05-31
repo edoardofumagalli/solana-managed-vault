@@ -2,7 +2,13 @@
   "license": "ISC",
   "scripts": {
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
-    "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
+    "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
+    "test:kamino:surfpool": "RUN_SURFPOOL_KAMINO=1 npx ts-mocha -p ./tsconfig.json -t 1000000 \"tests/kamino_surfpool_smoke.ts\"",
+    "discover:kamino:oracles": "cargo test -p kamino_yield_module --test kamino_oracle_discovery -- --ignored --nocapture",
+    "test:kamino:surfpool:deposit": "RUN_SURFPOOL_KAMINO=1 npx ts-mocha -p ./tsconfig.json -t 1000000 \"tests/kamino_surfpool_deposit.ts\"",
+    "surfpool:write:vault": "npx ts-node --transpile-only scripts/surfpool-write-program.ts anchor_managed_vault",
+    "surfpool:write:kamino": "npx ts-node --transpile-only scripts/surfpool-write-program.ts kamino_yield_module",
+    "surfpool:write:mock": "npx ts-node --transpile-only scripts/surfpool-write-program.ts mock_yield_module"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1"

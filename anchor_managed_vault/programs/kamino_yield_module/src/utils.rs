@@ -109,7 +109,7 @@ pub fn read_exchange_rate_components(reserve_data: &[u8]) -> Result<(u128, u128)
 
     let total_fees = protocol_fees
         .checked_add(referrer_fees)
-        .and_then(|value| value.checked_add(pending_fees))
+        .and_then(|value: u128| value.checked_add(pending_fees))
         .ok_or_else(|| error!(KaminoYieldModuleError::MathOverflow))?;
     let gross_liquidity = available
         .checked_add(borrowed)
