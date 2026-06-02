@@ -2,7 +2,7 @@ use anchor_lang::{
     prelude::*,
     solana_program::program::{invoke, invoke_signed},
 };
-use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
+use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 use klend_interface::instructions::{
     refresh::{self, RefreshReserveAccounts},
     withdraw::{self, RedeemReserveCollateralAccounts},
@@ -50,7 +50,7 @@ pub struct Withdraw<'info> {
     )]
     pub kamino_module_state: Account<'info, KaminoModuleState>,
 
-    /// CHECK: The Kamino/Klend lending market account is owner-checked and matched to module state.
+    /// CHECK: SAFETY: Klend account parsed by the external program. We enforce owner and exact module-state key.
     #[account(
         owner = KLEND_PROGRAM_ID @ KaminoYieldModuleError::InvalidLendingMarket,
         constraint = lending_market.key() == kamino_module_state.lending_market
@@ -58,7 +58,7 @@ pub struct Withdraw<'info> {
     )]
     pub lending_market: UncheckedAccount<'info>,
 
-    /// CHECK: The Kamino/Klend reserve account is owner-checked and matched to module state.
+    /// CHECK: SAFETY: Klend account parsed by the external program. We enforce owner and exact module-state key.
     #[account(
         mut,
         owner = KLEND_PROGRAM_ID @ KaminoYieldModuleError::InvalidReserve,
@@ -67,19 +67,19 @@ pub struct Withdraw<'info> {
     )]
     pub kamino_reserve: UncheckedAccount<'info>,
 
-    /// CHECK: Klend validates that this is the correct lending market authority PDA.
+    /// CHECK: SAFETY: Klend validates this PDA during the redeem CPI; it is not writable here.
     pub lending_market_authority: UncheckedAccount<'info>,
 
-    /// CHECK: Optional price oracle used by Klend refresh_reserve.
+    /// CHECK: SAFETY: Optional Klend oracle. `refresh_reserve` requires the exact account stored in reserve config.
     pub pyth_oracle: UncheckedAccount<'info>,
 
-    /// CHECK: Optional Switchboard price oracle used by Klend refresh_reserve.
+    /// CHECK: SAFETY: Optional Klend oracle. `refresh_reserve` requires the exact account stored in reserve config.
     pub switchboard_price_oracle: UncheckedAccount<'info>,
 
-    /// CHECK: Optional Switchboard TWAP oracle used by Klend refresh_reserve.
+    /// CHECK: SAFETY: Optional Klend oracle. `refresh_reserve` requires the exact account stored in reserve config.
     pub switchboard_twap_oracle: UncheckedAccount<'info>,
 
-    /// CHECK: Optional Scope prices account used by Klend refresh_reserve.
+    /// CHECK: SAFETY: Optional Klend oracle. `refresh_reserve` requires the exact account stored in reserve config.
     pub scope_prices: UncheckedAccount<'info>,
 
     #[account(
@@ -113,6 +113,16 @@ pub struct Withdraw<'info> {
     #[account(
         mut,
         token::mint = reserve_liquidity_mint,
+        token::authority = kamino_module_state,
+        token::token_program = liquidity_token_program,
+        constraint = module_underlying_token_account.owner == kamino_module_state.key()
+            @ KaminoYieldModuleError::InvalidTokenAccount,
+    )]
+    pub module_underlying_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        token::mint = reserve_liquidity_mint,
         token::token_program = liquidity_token_program,
         constraint = vault_token_account.owner == kamino_module_state.vault
             @ KaminoYieldModuleError::InvalidTokenAccount,
@@ -125,16 +135,37 @@ pub struct Withdraw<'info> {
     #[account(address = anchor_spl::token::ID)]
     pub liquidity_token_program: Interface<'info, TokenInterface>,
 
-    /// CHECK: The Kamino lending program.
+    /// CHECK: SAFETY: External program account constrained to the known Klend program id.
     #[account(address = KLEND_PROGRAM_ID)]
     pub klend_program: UncheckedAccount<'info>,
 
-    /// CHECK: Klend requires the instructions sysvar for this CPI.
+    /// CHECK: SAFETY: Sysvar account constrained to the canonical instructions sysvar id.
     #[account(address = anchor_lang::solana_program::sysvar::instructions::ID)]
     pub instruction_sysvar: UncheckedAccount<'info>,
 }
 
 impl<'info> Withdraw<'info> {
+    fn transfer_redeemed_liquidity_to_vault(
+        &self,
+        amount: u64,
+        signer_seeds: &[&[&[u8]]],
+    ) -> Result<()> {
+        token_interface::transfer_checked(
+            CpiContext::new_with_signer(
+                self.liquidity_token_program.to_account_info(),
+                TransferChecked {
+                    from: self.module_underlying_token_account.to_account_info(),
+                    mint: self.reserve_liquidity_mint.to_account_info(),
+                    to: self.vault_token_account.to_account_info(),
+                    authority: self.kamino_module_state.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            amount,
+            self.reserve_liquidity_mint.decimals,
+        )
+    }
+
     fn refresh_reserve(&self) -> Result<()> {
         let reserve_data = self.kamino_reserve.try_borrow_data()?;
         let oracle_accounts =
@@ -213,6 +244,7 @@ pub fn handler(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
         KaminoYieldModuleError::InsufficientCollateral
     );
 
+    let module_underlying_balance_before = ctx.accounts.module_underlying_token_account.amount;
     let vault_token_balance_before = ctx.accounts.vault_token_account.amount;
     let vault_key = ctx.accounts.kamino_module_state.vault;
     let module_state_bump = [ctx.accounts.kamino_module_state.bump];
@@ -232,7 +264,7 @@ pub fn handler(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
             reserve_collateral_mint: ctx.accounts.reserve_collateral_mint.key(),
             reserve_liquidity_supply: ctx.accounts.reserve_liquidity_supply.key(),
             user_source_collateral: ctx.accounts.vault_collateral_account.key(),
-            user_destination_liquidity: ctx.accounts.vault_token_account.key(),
+            user_destination_liquidity: ctx.accounts.module_underlying_token_account.key(),
             liquidity_token_program: ctx.accounts.liquidity_token_program.key(),
         },
         collateral_amount,
@@ -249,7 +281,9 @@ pub fn handler(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
             ctx.accounts.reserve_collateral_mint.to_account_info(),
             ctx.accounts.reserve_liquidity_supply.to_account_info(),
             ctx.accounts.vault_collateral_account.to_account_info(),
-            ctx.accounts.vault_token_account.to_account_info(),
+            ctx.accounts
+                .module_underlying_token_account
+                .to_account_info(),
             ctx.accounts.token_program.to_account_info(),
             ctx.accounts.liquidity_token_program.to_account_info(),
             ctx.accounts.klend_program.to_account_info(),
@@ -259,6 +293,21 @@ pub fn handler(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
     )?;
 
     ctx.accounts.vault_collateral_account.reload()?;
+    ctx.accounts.module_underlying_token_account.reload()?;
+
+    let redeemed_amount = ctx
+        .accounts
+        .module_underlying_token_account
+        .amount
+        .checked_sub(module_underlying_balance_before)
+        .ok_or_else(|| error!(KaminoYieldModuleError::MathOverflow))?;
+    require!(
+        redeemed_amount >= amount,
+        KaminoYieldModuleError::InsufficientReturnedLiquidity
+    );
+
+    ctx.accounts
+        .transfer_redeemed_liquidity_to_vault(redeemed_amount, module_state_signer_seeds)?;
     ctx.accounts.vault_token_account.reload()?;
 
     let returned_amount = ctx
