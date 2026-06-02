@@ -12,20 +12,20 @@ import {
     connection,
     manager,
     program,
-} from "./helpers/setup";
+} from "../../helpers/setup";
 import {
     deriveManagerWithdrawRequestPda,
     deriveShareMintPda,
     deriveVaultPda,
     deriveVaultTokenAccount,
-} from "./helpers/pda";
+} from "../../helpers/pda";
 import {
     createTokenAccount,
     createUnderlyingMint,
     fetchTokenAccount,
     mintTokens,
-} from "./helpers/token";
-import { assertPublicKeyEquals } from "./helpers/assertions";
+} from "../../helpers/token";
+import { assertPublicKeyEquals } from "../../helpers/assertions";
 
 type VaultTestSetup = {
     underlyingMint: PublicKey;

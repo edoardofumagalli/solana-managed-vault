@@ -10,7 +10,7 @@ import {
 } from "@solana/web3.js";
 import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
-import { KaminoYieldModule } from "../target/types/kamino_yield_module";
+import { KaminoYieldModule } from "../../../target/types/kamino_yield_module";
 import {
     DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS,
     DEFAULT_MAX_FLOAT_BPS,
@@ -18,7 +18,7 @@ import {
     manager,
     payer,
     program,
-} from "./helpers/setup";
+} from "../../helpers/setup";
 import {
     deriveKaminoModuleConfigPda,
     deriveKaminoModuleStatePda,
@@ -26,9 +26,9 @@ import {
     deriveShareMintPda,
     deriveVaultPda,
     deriveVaultTokenAccount,
-} from "./helpers/pda";
-import { assertPublicKeyEquals } from "./helpers/assertions";
-import { createTokenAccount, createUnderlyingMint } from "./helpers/token";
+} from "../../helpers/pda";
+import { assertPublicKeyEquals } from "../../helpers/assertions";
+import { createTokenAccount, createUnderlyingMint } from "../../helpers/token";
 
 const kaminoYieldModuleProgram = anchor.workspace
     .kaminoYieldModule as Program<KaminoYieldModule>;

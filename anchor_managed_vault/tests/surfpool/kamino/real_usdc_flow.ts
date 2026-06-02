@@ -17,14 +17,14 @@ import {
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 
-import { KaminoYieldModule } from "../target/types/kamino_yield_module";
+import { KaminoYieldModule } from "../../../target/types/kamino_yield_module";
 import {
   DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS,
   connection,
   manager,
   payer,
   program,
-} from "./helpers/setup";
+} from "../../helpers/setup";
 import {
   deriveKaminoModuleConfigPda,
   deriveKaminoModuleStatePda,
@@ -33,8 +33,13 @@ import {
   deriveShareMintPda,
   deriveVaultPda,
   deriveVaultTokenAccount,
-} from "./helpers/pda";
-import { assertPublicKeyEquals } from "./helpers/assertions";
+} from "../../helpers/pda";
+import { assertPublicKeyEquals } from "../../helpers/assertions";
+import {
+  fetchAccountInfoOrFail,
+  setSurfpoolTokenAccountBalance,
+  timeTravelToSlot,
+} from "../../helpers/surfpool";
 
 declare const process: {
   env: Record<string, string | undefined>;
@@ -71,19 +76,6 @@ const KAMINO_USDC = {
   ),
 };
 
-type SurfpoolRpcResponse = {
-  result?: unknown;
-  error?: {
-    code: number;
-    message: string;
-    data?: unknown;
-  };
-};
-
-type SurfpoolConnection = typeof connection & {
-  _rpcRequest(method: string, args: unknown[]): Promise<SurfpoolRpcResponse>;
-};
-
 type RealKaminoSetup = {
   vault: PublicKey;
   shareMint: PublicKey;
@@ -100,31 +92,6 @@ type SimulatableRpcBuilder = {
   transaction(): Promise<anchor.web3.Transaction>;
   rpc(): Promise<string>;
 };
-
-function publicKey(value: PublicKey): string {
-  return value.toBase58();
-}
-
-async function surfpoolRpc(method: string, args: unknown[]): Promise<unknown> {
-  const response = await (connection as SurfpoolConnection)._rpcRequest(
-    method,
-    args
-  );
-
-  if (response.error) {
-    throw new Error(`${method} failed: ${JSON.stringify(response.error)}`);
-  }
-
-  return response.result;
-}
-
-async function fetchAccountInfoOrFail(address: PublicKey, label: string) {
-  const accountInfo = await connection.getAccountInfo(address);
-
-  assert.isNotNull(accountInfo, `${label} must exist on the local surfnet`);
-
-  return accountInfo!;
-}
 
 async function assertRealKaminoAccountsAreCloned(): Promise<void> {
   const klendProgram = await fetchAccountInfoOrFail(
@@ -193,18 +160,6 @@ async function createAta(
   );
 }
 
-async function setSurfpoolTokenAccountBalance(
-  owner: PublicKey,
-  mint: PublicKey,
-  amount: number
-): Promise<void> {
-  await surfpoolRpc("surfnet_setTokenAccount", [
-    publicKey(owner),
-    publicKey(mint),
-    { amount },
-  ]);
-}
-
 async function ensureSurfpoolSlotAfterReserveLastUpdate(): Promise<void> {
   const reserve = await fetchAccountInfoOrFail(
     KAMINO_USDC.reserve,
@@ -222,7 +177,7 @@ async function ensureSurfpoolSlotAfterReserveLastUpdate(): Promise<void> {
     `time traveling Surfpool from slot ${currentSlot} to ${targetSlot}`
   );
 
-  await surfpoolRpc("surfnet_timeTravel", [{ absoluteSlot: targetSlot }]);
+  await timeTravelToSlot(targetSlot);
 
   const updatedSlot = await connection.getSlot();
   assert.isAtLeast(updatedSlot, targetSlot);

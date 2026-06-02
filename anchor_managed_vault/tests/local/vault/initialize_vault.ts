@@ -12,19 +12,19 @@ import {
     INVALID_MANAGER_WITHDRAW_DELAY_SLOTS,
     manager,
     program,
-} from "./helpers/setup";
+} from "../../helpers/setup";
 import {
     deriveShareMintPda,
     deriveVaultPda,
     deriveVaultTokenAccount,
-} from "./helpers/pda";
+} from "../../helpers/pda";
 import {
     DEFAULT_DECIMALS,
     createUnderlyingMint,
     fetchMint,
     fetchTokenAccount,
-} from "./helpers/token";
-import { assertPublicKeyEquals } from "./helpers/assertions";
+} from "../../helpers/token";
+import { assertPublicKeyEquals } from "../../helpers/assertions";
 
 describe("initialize_vault", () => {
     it("initializes vault state, share mint, and vault token account", async () => {

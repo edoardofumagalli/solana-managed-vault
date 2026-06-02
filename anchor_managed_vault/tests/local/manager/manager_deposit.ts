@@ -1,197 +1,27 @@
 import * as anchor from "@coral-xyz/anchor";
 import { assert } from "chai";
-import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
-import {
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-    TOKEN_PROGRAM_ID,
-} from "@solana/spl-token";
+import { Keypair } from "@solana/web3.js";
 
-import {
-    DEFAULT_MAX_FLOAT_BPS,
-    DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS,
-    connection,
-    manager,
-    program,
-} from "./helpers/setup";
-import {
-    deriveManagerWithdrawRequestPda,
-    deriveShareMintPda,
-    deriveVaultPda,
-    deriveVaultTokenAccount,
-} from "./helpers/pda";
+import { connection, manager, program } from "../../helpers/setup";
 import {
     createTokenAccount,
     createUnderlyingMint,
     fetchTokenAccount,
     mintTokens,
-} from "./helpers/token";
+} from "../../helpers/token";
+import { setupVaultWithDeposit } from "../../helpers/vault";
+import {
+    managerDeposit,
+    requestAndExecuteManagerWithdraw as managerWithdraw,
+    waitUntilSlot,
+} from "../../helpers/manager";
 
-type VaultTestSetup = {
-    underlyingMint: PublicKey;
-    vault: PublicKey;
-    shareMint: PublicKey;
-    vaultTokenAccount: PublicKey;
-    depositorUnderlyingTokenAccount: PublicKey;
-    depositorShareTokenAccount: PublicKey;
-};
+const ZERO_DELAY = new anchor.BN(0);
 
-async function setupVaultWithDeposit(
-    depositAmount: number,
-    maxFloatBps: number = DEFAULT_MAX_FLOAT_BPS
-): Promise<VaultTestSetup> {
-    const underlyingMint = await createUnderlyingMint();
-
-    const [vault] = deriveVaultPda(underlyingMint);
-    const [shareMint] = deriveShareMintPda(vault);
-    const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
-
-    await program.methods
-        .initializeVault(maxFloatBps, manager, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
-        .accountsPartial({
-            manager,
-            underlyingMint,
-            vault,
-            shareMint,
-            vaultTokenAccount,
-            tokenProgram: TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        })
-        .rpc();
-
-    const depositorUnderlyingTokenAccount = await createTokenAccount(
-        underlyingMint,
-        manager
-    );
-    const depositorShareTokenAccount = await createTokenAccount(
-        shareMint,
-        manager
-    );
-
-    await mintTokens(
-        underlyingMint,
-        depositorUnderlyingTokenAccount,
-        depositAmount
-    );
-
-    await program.methods
-        .deposit(new anchor.BN(depositAmount))
-        .accountsPartial({
-            depositor: manager,
-            vault,
-            underlyingMint,
-            depositorUnderlyingTokenAccount,
-            shareMint,
-            vaultTokenAccount,
-            depositorShareTokenAccount,
-            tokenProgram: TOKEN_PROGRAM_ID,
-        })
-        .rpc();
-
-    return {
-        underlyingMint,
-        vault,
-        shareMint,
-        vaultTokenAccount,
-        depositorUnderlyingTokenAccount,
-        depositorShareTokenAccount,
-    };
-}
-
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function waitUntilSlot(targetSlot: anchor.BN): Promise<void> {
-    while (new anchor.BN(await connection.getSlot()).lt(targetSlot)) {
-        await sleep(250);
-    }
-}
-
-async function managerWithdraw(
-    setup: VaultTestSetup,
-    amount: number,
-    receiverUnderlyingTokenAccount: PublicKey,
-    signer: Keypair | null = null,
-    managerAccount: PublicKey = manager
-): Promise<void> {
-    const vaultState = await program.account.vault.fetch(setup.vault);
-    const [managerWithdrawRequest] = deriveManagerWithdrawRequestPda(
-        setup.vault,
-        vaultState.nextManagerWithdrawRequestId
-    );
-
-    const requestBuilder = program.methods
-        .requestManagerWithdraw(new anchor.BN(amount))
-        .accountsPartial({
-            manager: managerAccount,
-            vault: setup.vault,
-            underlyingMint: setup.underlyingMint,
-            vaultTokenAccount: setup.vaultTokenAccount,
-            receiverUnderlyingTokenAccount,
-            managerWithdrawRequest,
-            tokenProgram: TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-        });
-
-    if (signer) {
-        await requestBuilder.signers([signer]).rpc();
-    } else {
-        await requestBuilder.rpc();
-    }
-
-    const requestState = await program.account.managerWithdrawRequest.fetch(
-        managerWithdrawRequest
-    );
-    await waitUntilSlot(requestState.executableAfterSlot);
-
-    const executeBuilder = program.methods
-        .executeManagerWithdraw()
-        .accountsPartial({
-            executor: managerAccount,
-            vault: setup.vault,
-            underlyingMint: setup.underlyingMint,
-            vaultTokenAccount: setup.vaultTokenAccount,
-            receiverUnderlyingTokenAccount,
-            managerWithdrawRequest,
-            tokenProgram: TOKEN_PROGRAM_ID,
-        });
-
-    if (signer) {
-        await executeBuilder.signers([signer]).rpc();
-        return;
-    }
-
-    await executeBuilder.rpc();
-}
-
-async function managerDeposit(
-    setup: VaultTestSetup,
-    amount: number,
-    callerUnderlyingTokenAccount: PublicKey,
-    signer: Keypair | null = null,
-    caller: PublicKey = manager,
-    vaultTokenAccount: PublicKey = setup.vaultTokenAccount,
-    underlyingMint: PublicKey = setup.underlyingMint
-): Promise<void> {
-    const builder = program.methods
-        .managerDeposit(new anchor.BN(amount))
-        .accountsPartial({
-            caller,
-            vault: setup.vault,
-            underlyingMint,
-            callerUnderlyingTokenAccount,
-            vaultTokenAccount,
-            tokenProgram: TOKEN_PROGRAM_ID,
-        });
-
-    if (signer) {
-        await builder.signers([signer]).rpc();
-        return;
-    }
-
-    await builder.rpc();
+async function setupManagerDepositVault(depositAmount: number) {
+    return setupVaultWithDeposit(depositAmount, {
+        managerWithdrawDelaySlots: ZERO_DELAY,
+    });
 }
 
 function assertErrorIncludesAny(error: unknown, expectedParts: string[]) {
@@ -203,13 +33,18 @@ function assertErrorIncludesAny(error: unknown, expectedParts: string[]) {
 }
 
 describe("manager_deposit", () => {
+    before(async () => {
+        const currentSlot = await connection.getSlot();
+        await waitUntilSlot(new anchor.BN(currentSlot + 1));
+    });
+
     it("lets a non-manager return underlying and reduce outstanding float", async () => {
         const depositAmount = 1_000_000;
         const withdrawAmount = 200_000;
         const returnAmount = 50_000;
         const caller = Keypair.generate();
 
-        const setup = await setupVaultWithDeposit(depositAmount);
+        const setup = await setupManagerDepositVault(depositAmount);
         const managerReceiverTokenAccount = await createTokenAccount(
             setup.underlyingMint,
             manager
@@ -252,7 +87,7 @@ describe("manager_deposit", () => {
     it("rejects zero amount", async () => {
         const depositAmount = 1_000;
 
-        const setup = await setupVaultWithDeposit(depositAmount);
+        const setup = await setupManagerDepositVault(depositAmount);
         const callerUnderlyingTokenAccount = await createTokenAccount(
             setup.underlyingMint,
             manager
@@ -282,7 +117,7 @@ describe("manager_deposit", () => {
         const excessAmount = returnAmount - withdrawAmount;
         const caller = Keypair.generate();
 
-        const setup = await setupVaultWithDeposit(depositAmount);
+        const setup = await setupManagerDepositVault(depositAmount);
         const managerReceiverTokenAccount = await createTokenAccount(
             setup.underlyingMint,
             manager
@@ -325,7 +160,7 @@ describe("manager_deposit", () => {
         const returnAmount = 10_000;
         const caller = Keypair.generate();
 
-        const setup = await setupVaultWithDeposit(depositAmount);
+        const setup = await setupManagerDepositVault(depositAmount);
         const managerReceiverTokenAccount = await createTokenAccount(
             setup.underlyingMint,
             manager
@@ -374,7 +209,7 @@ describe("manager_deposit", () => {
         const caller = Keypair.generate();
         const wrongDestinationOwner = Keypair.generate();
 
-        const setup = await setupVaultWithDeposit(depositAmount);
+        const setup = await setupManagerDepositVault(depositAmount);
         const managerReceiverTokenAccount = await createTokenAccount(
             setup.underlyingMint,
             manager

@@ -8,19 +8,19 @@ import {
     getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 
-import { MockYieldModule } from "../target/types/mock_yield_module";
-import { manager, program } from "./helpers/setup";
+import { MockYieldModule } from "../../../target/types/mock_yield_module";
+import { manager, program } from "../../helpers/setup";
 import {
     createTokenAccount,
     createUnderlyingMint,
     fetchTokenAccount,
     mintTokens,
-} from "./helpers/token";
+} from "../../helpers/token";
 import {
     deriveModuleCallAuthorityPda,
     deriveMockModuleAuthorityPda,
     deriveMockModuleStatePda,
-} from "./helpers/pda";
+} from "../../helpers/pda";
 
 const mockYieldModuleProgram = anchor.workspace
     .mockYieldModule as Program<MockYieldModule>;

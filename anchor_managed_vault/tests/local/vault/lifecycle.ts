@@ -17,7 +17,7 @@ import {
     connection,
     manager,
     program,
-} from "./helpers/setup";
+} from "../../helpers/setup";
 import {
     deriveEscrowShareTokenAccountPda,
     deriveManagerWithdrawRequestPda,
@@ -26,7 +26,7 @@ import {
     deriveVaultPda,
     deriveVaultTokenAccount,
     deriveWithdrawTicketPda,
-} from "./helpers/pda";
+} from "../../helpers/pda";
 import {
     createTokenAccount,
     createUnderlyingMint,
@@ -34,7 +34,7 @@ import {
     fetchTokenAccount,
     mintTokens,
     transferTokens,
-} from "./helpers/token";
+} from "../../helpers/token";
 
 type VaultTestSetup = {
     underlyingMint: PublicKey;

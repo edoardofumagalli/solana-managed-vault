@@ -10,7 +10,7 @@ import {
     DEFAULT_MAX_FLOAT_BPS,
     manager,
     program,
-} from "./helpers/setup";
+} from "../../helpers/setup";
 import {
     deriveEscrowShareTokenAccountPda,
     deriveManagerWithdrawRequestPda,
@@ -19,14 +19,14 @@ import {
     deriveVaultPda,
     deriveVaultTokenAccount,
     deriveWithdrawTicketPda,
-} from "./helpers/pda";
+} from "../../helpers/pda";
 import {
     createTokenAccount,
     createUnderlyingMint,
     fetchMint,
     fetchTokenAccount,
     mintTokens,
-} from "./helpers/token";
+} from "../../helpers/token";
 
 const ZERO_DELAY = new anchor.BN(0);
 

@@ -1,177 +1,32 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Program } from "@coral-xyz/anchor";
 import { assert } from "chai";
-import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+
+import { manager, program } from "../../helpers/setup";
+import { mintTokens } from "../../helpers/token";
+import { setupVault } from "../../helpers/vault";
 import {
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-    TOKEN_PROGRAM_ID,
-    getAssociatedTokenAddressSync,
-} from "@solana/spl-token";
-
-import { MockYieldModule } from "../target/types/mock_yield_module";
-import {
-    DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS,
-    DEFAULT_MAX_FLOAT_BPS,
-    manager,
-    program,
-} from "./helpers/setup";
-import {
-    deriveMockModuleAuthorityPda,
-    deriveMockModuleStatePda,
-    deriveModuleEntryPda,
-    deriveShareMintPda,
-    deriveVaultPda,
-    deriveVaultTokenAccount,
-} from "./helpers/pda";
-import { createUnderlyingMint, mintTokens } from "./helpers/token";
-
-const mockYieldModuleProgram = anchor.workspace
-    .mockYieldModule as Program<MockYieldModule>;
-
-type VaultSetup = {
-    underlyingMint: PublicKey;
-    vault: PublicKey;
-    shareMint: PublicKey;
-    vaultTokenAccount: PublicKey;
-    emergencyAdmin: Keypair;
-};
-
-type MockModuleSetup = {
-    mockModuleState: PublicKey;
-    mockModuleAuthority: PublicKey;
-    moduleTokenAccount: PublicKey;
-};
-
-type RegisteredModuleSetup = VaultSetup & MockModuleSetup & {
-    moduleEntry: PublicKey;
-    policySeed: anchor.BN;
-};
-
-async function setupVault(): Promise<VaultSetup> {
-    const underlyingMint = await createUnderlyingMint();
-    const emergencyAdmin = Keypair.generate();
-
-    const [vault] = deriveVaultPda(underlyingMint);
-    const [shareMint] = deriveShareMintPda(vault);
-    const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
-
-    await program.methods
-        .initializeVault(
-            DEFAULT_MAX_FLOAT_BPS,
-            emergencyAdmin.publicKey,
-            DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS
-        )
-        .accountsPartial({
-            manager,
-            underlyingMint,
-            vault,
-            shareMint,
-            vaultTokenAccount,
-            tokenProgram: TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        })
-        .rpc();
-
-    return {
-        underlyingMint,
-        vault,
-        shareMint,
-        vaultTokenAccount,
-        emergencyAdmin,
-    };
-}
+    MockModuleSetup,
+    RegisteredMockModuleSetup,
+    mockYieldModuleProgram,
+    setupMockModule as setupMockModuleShared,
+    setupRegisteredMockModule,
+} from "../../helpers/modules";
 
 async function setupMockModule(
     vault: PublicKey,
     underlyingMint: PublicKey
 ): Promise<MockModuleSetup> {
-    const [mockModuleState] = deriveMockModuleStatePda(
-        vault,
-        mockYieldModuleProgram.programId
-    );
-    const [mockModuleAuthority] = deriveMockModuleAuthorityPda(
-        mockModuleState,
-        mockYieldModuleProgram.programId
-    );
-    const moduleTokenAccount = getAssociatedTokenAddressSync(
-        underlyingMint,
-        mockModuleAuthority,
-        true,
-        TOKEN_PROGRAM_ID
-    );
-
-    await mockYieldModuleProgram.methods
-        .initialize(program.programId)
-        .accountsPartial({
-            payer: manager,
-            vault,
-            underlyingMint,
-            mockModuleState,
-            mockModuleAuthority,
-            moduleTokenAccount,
-            tokenProgram: TOKEN_PROGRAM_ID,
-            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-        })
-        .rpc();
-
-    return {
-        mockModuleState,
-        mockModuleAuthority,
-        moduleTokenAccount,
-    };
-}
-
-async function registerModule(
-    vault: PublicKey,
-    policySeed: anchor.BN,
-    moduleState: PublicKey,
-    moduleUnderlyingTokenAccount: PublicKey
-): Promise<PublicKey> {
-    const [moduleEntry] = deriveModuleEntryPda(
-        vault,
-        mockYieldModuleProgram.programId,
-        policySeed
-    );
-
-    await program.methods
-        .registerModule(policySeed)
-        .accountsPartial({
-            manager,
-            vault,
-            moduleEntry,
-            moduleState,
-            moduleUnderlyingTokenAccount,
-            moduleProgram: mockYieldModuleProgram.programId,
-            systemProgram: SystemProgram.programId,
-        })
-        .rpc();
-
-    return moduleEntry;
+    return setupMockModuleShared({ vault, underlyingMint });
 }
 
 async function setupRegisteredModule(
     policySeed: anchor.BN = new anchor.BN(1)
-): Promise<RegisteredModuleSetup> {
+): Promise<RegisteredMockModuleSetup> {
     const vaultSetup = await setupVault();
-    const mockModuleSetup = await setupMockModule(
-        vaultSetup.vault,
-        vaultSetup.underlyingMint
-    );
-    const moduleEntry = await registerModule(
-        vaultSetup.vault,
-        policySeed,
-        mockModuleSetup.mockModuleState,
-        mockModuleSetup.moduleTokenAccount
-    );
 
-    return {
-        ...vaultSetup,
-        ...mockModuleSetup,
-        moduleEntry,
-        policySeed,
-    };
+    return setupRegisteredMockModule(vaultSetup, policySeed);
 }
 
 async function calculateMockNav(setup: MockModuleSetup): Promise<void> {
@@ -186,7 +41,7 @@ async function calculateMockNav(setup: MockModuleSetup): Promise<void> {
         .rpc();
 }
 
-async function syncModuleNav(setup: RegisteredModuleSetup): Promise<void> {
+async function syncModuleNav(setup: RegisteredMockModuleSetup): Promise<void> {
     await program.methods
         .syncModuleNav()
         .accountsPartial({

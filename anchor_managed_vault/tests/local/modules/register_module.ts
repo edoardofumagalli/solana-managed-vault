@@ -13,14 +13,14 @@ import {
     getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 
-import { MockYieldModule } from "../target/types/mock_yield_module";
+import { MockYieldModule } from "../../../target/types/mock_yield_module";
 import {
     connection,
     DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS,
     DEFAULT_MAX_FLOAT_BPS,
     manager,
     program,
-} from "./helpers/setup";
+} from "../../helpers/setup";
 import {
     deriveMockModuleAuthorityPda,
     deriveMockModuleStatePda,
@@ -28,9 +28,9 @@ import {
     deriveShareMintPda,
     deriveVaultPda,
     deriveVaultTokenAccount,
-} from "./helpers/pda";
-import { createUnderlyingMint } from "./helpers/token";
-import { assertPublicKeyEquals } from "./helpers/assertions";
+} from "../../helpers/pda";
+import { createUnderlyingMint } from "../../helpers/token";
+import { assertPublicKeyEquals } from "../../helpers/assertions";
 
 const mockYieldModuleProgram = anchor.workspace
     .mockYieldModule as Program<MockYieldModule>;

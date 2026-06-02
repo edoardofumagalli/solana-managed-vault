@@ -14,6 +14,32 @@ import { connection, payer, wallet } from "./setup";
 // the share mint, making the initial 1:1 accounting easier to reason about.
 export const DEFAULT_DECIMALS = 6;
 
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withBlockhashRetry<T>(operation: () => Promise<T>): Promise<T> {
+    const maxAttempts = 3;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            return await operation();
+        } catch (error) {
+            const isBlockhashPollingError = String(error).includes(
+                "Unable to obtain a new blockhash"
+            );
+
+            if (!isBlockhashPollingError || attempt === maxAttempts) {
+                throw error;
+            }
+
+            await sleep(1_000);
+        }
+    }
+
+    throw new Error("Unreachable blockhash retry state");
+}
+
 // Creates the token mint that the vault will accept as its underlying asset.
 // This is async because it sends a transaction to the local validator.
 // payer is the Keypair that pays rent; wallet.publicKey becomes mint authority.
@@ -21,15 +47,17 @@ export const DEFAULT_DECIMALS = 6;
 export async function createUnderlyingMint(
     decimals: number = DEFAULT_DECIMALS
 ): Promise<PublicKey> {
-    return createMint(
-        connection,
-        payer,
-        wallet.publicKey,
-        null,
-        decimals,
-        undefined,
-        undefined,
-        TOKEN_PROGRAM_ID
+    return withBlockhashRetry(() =>
+        createMint(
+            connection,
+            payer,
+            wallet.publicKey,
+            null,
+            decimals,
+            undefined,
+            undefined,
+            TOKEN_PROGRAM_ID
+        )
     );
 }
 
@@ -40,15 +68,17 @@ export async function createTokenAccount(
     owner: PublicKey,
     allowOwnerOffCurve = false
 ): Promise<PublicKey> {
-    return createAssociatedTokenAccountIdempotent(
-        connection,
-        payer,
-        mint,
-        owner,
-        undefined,
-        TOKEN_PROGRAM_ID,
-        undefined,
-        allowOwnerOffCurve
+    return withBlockhashRetry(() =>
+        createAssociatedTokenAccountIdempotent(
+            connection,
+            payer,
+            mint,
+            owner,
+            undefined,
+            TOKEN_PROGRAM_ID,
+            undefined,
+            allowOwnerOffCurve
+        )
     );
 }
 
@@ -59,16 +89,18 @@ export async function mintTokens(
     destination: PublicKey,
     amount: number | bigint
 ) {
-    return mintTo(
-        connection,
-        payer,
-        mint,
-        destination,
-        payer,
-        amount,
-        [],
-        undefined,
-        TOKEN_PROGRAM_ID
+    return withBlockhashRetry(() =>
+        mintTo(
+            connection,
+            payer,
+            mint,
+            destination,
+            payer,
+            amount,
+            [],
+            undefined,
+            TOKEN_PROGRAM_ID
+        )
     );
 }
 
@@ -80,16 +112,18 @@ export async function transferTokens(
     amount: number | bigint,
     owner: Signer = payer
 ) {
-    return transfer(
-        connection,
-        payer,
-        source,
-        destination,
-        owner,
-        amount,
-        [],
-        undefined,
-        TOKEN_PROGRAM_ID
+    return withBlockhashRetry(() =>
+        transfer(
+            connection,
+            payer,
+            source,
+            destination,
+            owner,
+            amount,
+            [],
+            undefined,
+            TOKEN_PROGRAM_ID
+        )
     );
 }
 

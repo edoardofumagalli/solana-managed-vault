@@ -7,12 +7,12 @@ import {
 } from "@solana/spl-token";
 
 import { DEFAULT_MAX_FLOAT_BPS,
-    DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS, manager, program } from "./helpers/setup";
+    DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS, manager, program } from "../../helpers/setup";
 import {
     deriveShareMintPda,
     deriveVaultPda,
     deriveVaultTokenAccount,
-} from "./helpers/pda";
+} from "../../helpers/pda";
 import {
     createTokenAccount,
     createUnderlyingMint,
@@ -20,7 +20,7 @@ import {
     fetchTokenAccount,
     mintTokens,
     transferTokens,
-} from "./helpers/token";
+} from "../../helpers/token";
 
 describe("deposit", () => {
     it("mints shares 1:1 for the first depositor", async () => {

@@ -1,148 +1,18 @@
 import * as anchor from "@coral-xyz/anchor";
 import { assert } from "chai";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
-import {
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-    TOKEN_PROGRAM_ID,
-} from "@solana/spl-token";
+import { SystemProgram } from "@solana/web3.js";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
-import { DEFAULT_MAX_FLOAT_BPS,
-    DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS, manager, program } from "./helpers/setup";
+import { manager, program } from "../../helpers/setup";
+import { fetchTokenAccount } from "../../helpers/token";
+import { assertPublicKeyEquals } from "../../helpers/assertions";
+import { setupVaultWithDeposit } from "../../helpers/vault";
 import {
-    deriveEscrowShareTokenAccountPda,
-    deriveShareMintPda,
-    deriveUserVaultPositionPda,
-    deriveVaultPda,
-    deriveVaultTokenAccount,
-    deriveWithdrawTicketPda,
-} from "./helpers/pda";
-import {
-    createTokenAccount,
-    createUnderlyingMint,
-    fetchTokenAccount,
-    mintTokens,
-} from "./helpers/token";
-import { assertPublicKeyEquals } from "./helpers/assertions";
+    deriveWithdrawAccounts as deriveRequestWithdrawAccounts,
+    requestWithdraw,
+} from "../../helpers/withdraw";
 
 const MAX_PENDING_TICKETS_PER_USER = 8;
-
-type VaultTestSetup = {
-    underlyingMint: PublicKey;
-    vault: PublicKey;
-    shareMint: PublicKey;
-    vaultTokenAccount: PublicKey;
-    userUnderlyingTokenAccount: PublicKey;
-    userShareTokenAccount: PublicKey;
-};
-
-type WithdrawAccounts = {
-    userPosition: PublicKey;
-    withdrawTicket: PublicKey;
-    escrowShareTokenAccount: PublicKey;
-};
-
-async function setupVaultWithDeposit(
-    depositAmount: number
-): Promise<VaultTestSetup> {
-    const underlyingMint = await createUnderlyingMint();
-
-    const [vault] = deriveVaultPda(underlyingMint);
-    const [shareMint] = deriveShareMintPda(vault);
-    const vaultTokenAccount = deriveVaultTokenAccount(underlyingMint, vault);
-
-    await program.methods
-        .initializeVault(DEFAULT_MAX_FLOAT_BPS, manager, DEFAULT_MANAGER_WITHDRAW_DELAY_SLOTS)
-        .accountsPartial({
-            manager,
-            underlyingMint,
-            vault,
-            shareMint,
-            vaultTokenAccount,
-            tokenProgram: TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        })
-        .rpc();
-
-    const userUnderlyingTokenAccount = await createTokenAccount(
-        underlyingMint,
-        manager
-    );
-    const userShareTokenAccount = await createTokenAccount(shareMint, manager);
-
-    await mintTokens(
-        underlyingMint,
-        userUnderlyingTokenAccount,
-        depositAmount
-    );
-
-    await program.methods
-        .deposit(new anchor.BN(depositAmount))
-        .accountsPartial({
-            depositor: manager,
-            vault,
-            underlyingMint,
-            depositorUnderlyingTokenAccount: userUnderlyingTokenAccount,
-            shareMint,
-            vaultTokenAccount,
-            depositorShareTokenAccount: userShareTokenAccount,
-            tokenProgram: TOKEN_PROGRAM_ID,
-        })
-        .rpc();
-
-    return {
-        underlyingMint,
-        vault,
-        shareMint,
-        vaultTokenAccount,
-        userUnderlyingTokenAccount,
-        userShareTokenAccount,
-    };
-}
-
-function deriveRequestWithdrawAccounts(
-    vault: PublicKey,
-    ticketIndex: number
-): WithdrawAccounts {
-    const [userPosition] = deriveUserVaultPositionPda(vault, manager);
-    const [withdrawTicket] = deriveWithdrawTicketPda(vault, manager, ticketIndex);
-    const [escrowShareTokenAccount] = deriveEscrowShareTokenAccountPda(
-        withdrawTicket
-    );
-
-    return {
-        userPosition,
-        withdrawTicket,
-        escrowShareTokenAccount,
-    };
-}
-
-async function requestWithdraw(
-    setup: VaultTestSetup,
-    ticketIndex: number,
-    sharesAmount: number
-): Promise<WithdrawAccounts> {
-    const accounts = deriveRequestWithdrawAccounts(setup.vault, ticketIndex);
-
-    await program.methods
-        .requestWithdraw(new anchor.BN(sharesAmount))
-        .accountsPartial({
-            user: manager,
-            vault: setup.vault,
-            underlyingMint: setup.underlyingMint,
-            shareMint: setup.shareMint,
-            vaultTokenAccount: setup.vaultTokenAccount,
-            userShareTokenAccount: setup.userShareTokenAccount,
-            userPosition: accounts.userPosition,
-            withdrawTicket: accounts.withdrawTicket,
-            escrowShareTokenAccount: accounts.escrowShareTokenAccount,
-            tokenProgram: TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-        })
-        .rpc();
-
-    return accounts;
-}
 
 describe("request_withdraw", () => {
     it("moves requested shares into escrow and creates a ticket", async () => {
