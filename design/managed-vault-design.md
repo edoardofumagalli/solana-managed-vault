@@ -337,6 +337,8 @@ In token mode, `position_amount` is the collateral token balance. In obligation 
 
 For NAV math, the adapter still reads selected Kamino reserve and obligation numeric fields from raw account bytes. For Klend reserve refreshes, it uses `klend_interface::ReserveInfo::from_account_data` to read the reserve oracle configuration, then validates the oracle accounts supplied by the caller. If an optional oracle is not configured on the reserve, the caller must pass `KLEND_PROGRAM_ID` as the placeholder expected by `klend-interface`.
 
+The module keeps a `module_underlying_token_account` owned by the Kamino module state PDA. It is used as the staging account for liquidity deployed from the vault and as the intermediate destination for redeemed liquidity. This intermediate account is required by the current Klend redeem interface because the destination liquidity token account must be owned by the signer used for the redeem CPI.
+
 Token-mode `deposit(amount)`:
 
 1. Validates `module_call_authority`.
@@ -358,11 +360,12 @@ Token-mode `withdraw(amount)`:
 5. Reads the refreshed reserve exchange rate.
 6. Calculates the collateral amount to redeem, rounding up.
 7. Calls Klend `redeem_reserve_collateral`.
-8. Sends underlying back to the vault token account.
-9. Verifies that at least the requested underlying amount was returned.
-10. Recalculates cached NAV.
+8. Receives redeemed underlying into `module_underlying_token_account`, owned by the Kamino module state PDA.
+9. Transfers the redeemed underlying from `module_underlying_token_account` to the vault token account.
+10. Verifies that at least the requested underlying amount was returned to the vault.
+11. Recalculates cached NAV.
 
-Current status: token-mode deposit/withdraw, reserve refresh, and NAV logic exist as an adapter prototype. Full production readiness still requires real Kamino account discovery, robust integration fixtures, and broader operational cleanup.
+Current status: token-mode deposit/withdraw, reserve refresh, NAV logic, and the Surfpool real-USDC deploy/recall path exist as an adapter prototype. Full production readiness still requires broader Kamino account discovery, more fixture coverage, and operational cleanup.
 
 ## 13. Events And Observability
 
@@ -406,9 +409,11 @@ Existing tests cover:
 - Emergency shutdown behavior.
 - Module registration and NAV sync.
 - Mock module initialization, NAV, direct-call rejection, generic deploy, and generic recall.
-- Kamino module initialization and NAV calculation scenarios.
+- Kamino module initialization, NAV calculation, and Surfpool-backed real-USDC deploy/recall through Klend.
 
 The mock module is the main local harness for generic module dispatch because it avoids dependence on live external protocol accounts.
+
+Surfpool is used for the real Kamino/Klend integration path because it can run a local RPC while cloning external protocol accounts. The current real-flow script is `npm run test:kamino:real-usdc`; it targets `tests/surfpool/kamino/real_usdc_flow.ts` and is gated by `RUN_KAMINO_REAL_FLOW=1`. The flow simulates and executes vault `deploy_to_module` and `recall_from_module` against a real Klend USDC reserve on the Surfpool local RPC. Use an up-to-date Surfpool CLI; this workflow has been verified locally with `surfpool 1.3.0`, while older versions caused deployment/account-cloning issues.
 
 ## 15. Sequence Diagrams
 
@@ -444,9 +449,9 @@ Production cleanup:
 
 Kamino integration hardening:
 
-- Add real devnet/local fixtures for Kamino accounts.
-- Automate account discovery for reserve, market, authority, collateral mint, and supplies.
-- Expand token-mode integration tests beyond zero-position and synthetic NAV reads.
+- Automate account discovery for reserve, market, authority, collateral mint, supplies, and oracle accounts.
+- Expand Surfpool fixture coverage beyond the current real-USDC token-mode deploy/recall flow.
+- Add more negative-path tests around stale/mismatched oracle accounts and liquidity constraints.
 - Decide whether obligation-mode capital movement is in scope.
 
 Strategy architecture:
