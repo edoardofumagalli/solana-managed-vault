@@ -70,6 +70,8 @@ The transaction should be unsigned or only partially signed by backend-controlle
 
 For user actions, the transaction is returned unsigned and must be signed by the user's wallet.
 
+For permissionless or cranker actions, the API should still require an explicit `feePayer` input. This wallet is not treated as a vault authority; it only signs the outer Solana transaction so the transaction can pay network fees. When the Anchor instruction has a non-privileged signer account such as `executor` or `cranker`, the backend should use the same public key as both the instruction signer account and the transaction fee payer unless a later endpoint explicitly supports multiple signers.
+
 The response includes a human-readable `summary` so clients can display what the user is about to sign.
 
 ## 5. Who Signs And Who Sends
@@ -81,15 +83,15 @@ Signing rules should match the Anchor account constraints.
 | `deposit` | User/depositor | Client wallet |
 | `request_withdraw` | User | Client wallet |
 | `cancel_withdraw` | User | Client wallet |
-| `process_withdraw` | No user signer in the on-chain instruction | Client, backend, or cranker |
+| `process_withdraw` | Transaction fee payer only | Client, backend, or cranker |
 | `manager_deposit` | Caller returning funds | Client wallet or operational wallet |
 | `request_manager_withdraw` | Manager | Manager wallet |
-| `execute_manager_withdraw` | Executor | Manager, backend, or cranker |
+| `execute_manager_withdraw` | Permissionless executor signer; use fee payer by default | Manager, backend, or cranker |
 | `report_float_value` | Manager | Manager wallet |
 | `register_module` | Manager | Manager wallet |
 | `deploy_to_module` | Manager | Manager wallet |
 | `recall_from_module` | Manager | Manager wallet |
-| `sync_module_nav` | Cranker | Client, backend, or cranker |
+| `sync_module_nav` | Permissionless cranker signer; use fee payer by default | Client, backend, or cranker |
 | `nominate_manager` | Current manager | Manager wallet |
 | `accept_manager` | Pending manager | Pending manager wallet |
 | `activate_emergency_shutdown` | Emergency admin | Emergency admin wallet |
@@ -116,6 +118,17 @@ Most endpoints need:
 
 Amounts should be strings in API JSON to avoid JavaScript number precision issues.
 
+Permissionless or cranker endpoints use `feePayer` instead of `wallet` when there is no privileged role signer:
+
+```json
+{
+    "vault": "<vault public key>",
+    "feePayer": "<wallet public key>"
+}
+```
+
+If the on-chain account list contains a non-privileged signer such as `executor` or `cranker`, the first backend version should set that account to `feePayer`. This keeps the response's `requiredSigners` list simple and avoids asking the client for two signatures when one fee-paying wallet is enough.
+
 ### Endpoint Inputs
 
 | Endpoint | Minimal request data | Backend derives or reads |
@@ -123,15 +136,15 @@ Amounts should be strings in API JSON to avoid JavaScript number precision issue
 | `POST /transactions/deposit` | `vault`, `user`, `amount` | Vault state, underlying mint, share mint, vault token account, user underlying ATA, user share ATA |
 | `POST /transactions/request-withdraw` | `vault`, `user`, `sharesAmount` | Vault state, share mint, user share ATA, user position PDA, next ticket PDA, escrow share token account |
 | `POST /transactions/cancel-withdraw` | `vault`, `user`, `ticketIndex` | Withdraw ticket PDA, escrow share token account, user share ATA |
-| `POST /transactions/process-withdraw` | `vault`, `user`, `ticketIndex`, optional `receiver` | Withdraw ticket PDA, escrow share token account, share mint, vault token account, receiver underlying ATA |
+| `POST /transactions/process-withdraw` | `vault`, `user`, `ticketIndex`, `feePayer` | Withdraw ticket PDA, user position PDA, escrow share token account, share mint, vault token account, user underlying ATA |
 | `POST /transactions/manager-deposit` | `vault`, `caller`, `amount`, optional source token account | Vault state, vault token account, underlying mint, caller underlying ATA if source not provided |
 | `POST /transactions/manager-withdraw/request` | `vault`, `manager`, `amount`, `receiverTokenAccount` | Manager withdraw request PDA, vault token account, vault state |
-| `POST /transactions/manager-withdraw/execute` | `vault`, `requestId`, `executor` | Manager withdraw request PDA, vault token account, receiver token account from request |
+| `POST /transactions/manager-withdraw/execute` | `vault`, `requestId`, `feePayer` | Manager withdraw request PDA, vault token account, receiver token account from request; backend uses `feePayer` as executor |
 | `POST /transactions/report-float-value` | `vault`, `manager`, `reportedFloatValue` | Vault state, vault token account |
 | `POST /transactions/modules/register` | `vault`, `manager`, `moduleProgram`, `moduleState`, `moduleUnderlyingTokenAccount`, `policySeed` | Module entry PDA and vault state |
 | `POST /transactions/modules/deploy` | `vault`, `manager`, `moduleEntry`, `amount`, module-specific accounts | Vault state, module entry, module call authority PDA, remaining accounts for module `deposit(amount)` |
 | `POST /transactions/modules/recall` | `vault`, `manager`, `moduleEntry`, `amount`, module-specific accounts | Vault state, module entry, module call authority PDA, remaining accounts for module `withdraw(amount)` |
-| `POST /transactions/modules/sync-nav` | `vault`, `moduleEntry`, `cranker`, module-specific accounts | Vault state, module entry, module-specific NAV accounts |
+| `POST /transactions/modules/sync-nav` | `vault`, `moduleEntry`, `feePayer`, module-specific accounts | Vault state, module entry, module-specific NAV accounts; backend uses `feePayer` as cranker |
 | `POST /transactions/emergency-shutdown` | `vault`, `emergencyAdmin` | Vault state |
 
 For Kamino-specific module endpoints, the backend may also need reserve, market, oracle, collateral mint, liquidity supply, and token accounts. In the first version these can be read from configuration or fixtures before a full discovery layer exists.
@@ -266,6 +279,8 @@ These can be permissionless or backend-operated later:
 - eventually `process_withdraw`
 - eventually scheduled health checks and NAV refreshes
 
+In the client-built mode, these endpoints should return unsigned transactions with `requiredSigners = [feePayer]`. In a later backend-operated mode, the service can choose a configured backend signer as the fee payer and submit the transaction itself, but that is a separate policy from user transaction building.
+
 ## 10. Validation Rules
 
 The backend should perform helpful validation before returning a transaction:
@@ -379,7 +394,7 @@ Before adding more endpoint families, extract the repeated transaction-building 
 2. Move optional simulation into a shared service so all endpoints return simulation summaries consistently.
 3. Keep endpoint-specific builders focused on account resolution and Anchor instruction construction.
 4. Preserve the user-wallet fee-payer model for normal user actions.
-5. Decide the explicit fee-payer input for permissionless/cranker actions such as `process_withdraw`, because Solana transactions still require a fee payer signer even when the on-chain instruction has no user signer.
+5. Use an explicit `feePayer` input for permissionless/cranker actions such as `process_withdraw`, because Solana transactions still require a fee payer signer even when the on-chain instruction has no user signer.
 
 ### Phase 3: User Withdraw Builders
 
@@ -409,8 +424,8 @@ Before writing the backend, decide these points:
 1. Backend location: create it inside this repo as `backend/`, or create a separate repo.
 2. Rust framework: use `axum` unless there is a reason to choose another framework.
 3. Transaction format: return base64 serialized `VersionedTransaction`, or return raw instructions and let the client assemble the transaction.
-4. Fee payer policy: user wallet as fee payer, or backend fee payer for some flows.
-5. Submission policy: backend only builds transactions, or backend can also submit permissionless/cranker transactions.
+4. Fee payer policy: user wallet as fee payer for normal user actions; explicit client-provided `feePayer` for permissionless/cranker transaction builders.
+5. Submission policy: backend only builds transactions for now; backend submission for permissionless/cranker transactions can be added later as a separate configured mode.
 6. Simulation policy: always simulate, make simulation optional, or skip simulation in the first version.
 7. Cluster support: localnet only first, or localnet plus devnet from the beginning.
 8. Kamino account source: static config/fixture first, or implement account discovery immediately.
