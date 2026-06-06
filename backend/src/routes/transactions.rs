@@ -1,17 +1,19 @@
 use axum::{extract::State, routing::post, Json, Router};
-use solana_client::rpc_config::RpcSimulateTransactionConfig;
 use solana_sdk::commitment_config::CommitmentConfig;
 use tokio::task;
 
 use crate::{
     api::{
-        ApiError, ApiResult, DepositTransactionRequest, SimulationSummary,
-        TransactionBuildResponse, TransactionSummary,
+        ApiError, ApiResult, DepositTransactionRequest, TransactionBuildResponse,
+        TransactionSummary,
     },
     builders::deposit::{
-        build_unsigned_deposit_transaction, parse_deposit_request, resolve_deposit_accounts,
+        build_deposit_instruction, parse_deposit_request, resolve_deposit_accounts,
     },
-    services::rpc::fetch_vault,
+    services::{
+        rpc::fetch_vault, transaction_builder::build_user_wallet_transaction,
+        transaction_simulator::simulate_transaction_if_requested,
+    },
     AppState,
 };
 
@@ -42,46 +44,19 @@ async fn build_deposit_transaction(
         .map_err(|error| ApiError::service_unavailable(format!("RPC task failed: {error}")))??;
 
     let deposit_accounts = resolve_deposit_accounts(&parsed_request, &vault_state);
-    let unsigned_transaction = build_unsigned_deposit_transaction(
-        &deposit_accounts,
-        parsed_request.amount,
+    let deposit_instruction = build_deposit_instruction(&deposit_accounts, parsed_request.amount);
+    let unsigned_transaction = build_user_wallet_transaction(
+        deposit_accounts.depositor,
+        &[deposit_instruction],
         latest_blockhash,
     )?;
 
-    let simulation = if parsed_request.simulate {
-        let rpc_client = state.rpc_client.clone();
-        let transaction = unsigned_transaction.transaction.clone();
-
-        let simulation_result = task::spawn_blocking(move || {
-            rpc_client
-                .simulate_transaction_with_config(
-                    &transaction,
-                    RpcSimulateTransactionConfig {
-                        sig_verify: false,
-                        replace_recent_blockhash: false,
-                        commitment: Some(CommitmentConfig::confirmed()),
-                        ..RpcSimulateTransactionConfig::default()
-                    },
-                )
-                .map_err(|error| {
-                    ApiError::service_unavailable(format!("RPC simulation failed: {error}"))
-                })
-        })
-        .await
-        .map_err(|error| ApiError::service_unavailable(format!("RPC task failed: {error}")))??;
-
-        Some(SimulationSummary {
-            ok: simulation_result.value.err.is_none(),
-            logs: simulation_result.value.logs.unwrap_or_default(),
-            error: simulation_result
-                .value
-                .err
-                .map(|error| format!("{error:?}")),
-            units_consumed: simulation_result.value.units_consumed,
-        })
-    } else {
-        None
-    };
+    let simulation = simulate_transaction_if_requested(
+        state.rpc_client.clone(),
+        unsigned_transaction.transaction.clone(),
+        parsed_request.simulate,
+    )
+    .await?;
 
     Ok(Json(TransactionBuildResponse {
         transaction: unsigned_transaction.transaction_base64,

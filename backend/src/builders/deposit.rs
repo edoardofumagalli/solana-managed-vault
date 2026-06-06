@@ -2,15 +2,7 @@ use std::str::FromStr;
 
 use anchor_lang::{InstructionData, ToAccountMetas};
 use anchor_managed_vault::{accounts, instruction, state::Vault, ID as VAULT_PROGRAM_ID};
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
-use solana_sdk::{
-    hash::Hash,
-    instruction::Instruction,
-    message::{v0::Message, VersionedMessage},
-    pubkey::Pubkey,
-    signature::Signature,
-    transaction::VersionedTransaction,
-};
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
 use spl_associated_token_account::get_associated_token_address_with_program_id;
 use spl_token::ID as TOKEN_PROGRAM_ID;
 
@@ -34,15 +26,6 @@ pub struct DepositAccounts {
     pub vault_token_account: Pubkey,
     pub depositor_share_token_account: Pubkey,
     pub token_program: Pubkey,
-}
-
-#[derive(Debug)]
-pub struct UnsignedDepositTransaction {
-    pub transaction: VersionedTransaction,
-    pub transaction_base64: String,
-    pub required_signers: Vec<Pubkey>,
-    pub fee_payer: Pubkey,
-    pub recent_blockhash: Hash,
 }
 
 pub fn parse_deposit_request(
@@ -103,42 +86,6 @@ pub fn build_deposit_instruction(accounts: &DepositAccounts, amount: u64) -> Ins
         .to_account_metas(None),
         data: instruction::Deposit { amount }.data(),
     }
-}
-
-pub fn build_unsigned_deposit_transaction(
-    accounts: &DepositAccounts,
-    amount: u64,
-    recent_blockhash: Hash,
-) -> Result<UnsignedDepositTransaction, ApiError> {
-    let deposit_instruction = build_deposit_instruction(accounts, amount);
-
-    let message = Message::try_compile(
-        &accounts.depositor,
-        &[deposit_instruction],
-        &[],
-        recent_blockhash,
-    )
-    .map_err(|error| {
-        ApiError::invalid_account(format!("failed to compile deposit transaction: {error}"))
-    })?;
-
-    let signature_count = usize::from(message.header.num_required_signatures);
-    let transaction = VersionedTransaction {
-        signatures: vec![Signature::default(); signature_count],
-        message: VersionedMessage::V0(message),
-    };
-
-    let transaction_bytes = bincode::serialize(&transaction).map_err(|error| {
-        ApiError::invalid_account(format!("failed to serialize deposit transaction: {error}"))
-    })?;
-
-    Ok(UnsignedDepositTransaction {
-        transaction,
-        transaction_base64: BASE64_STANDARD.encode(transaction_bytes),
-        required_signers: vec![accounts.depositor],
-        fee_payer: accounts.depositor,
-        recent_blockhash,
-    })
 }
 
 fn parse_pubkey(field: &str, value: &str) -> Result<Pubkey, ApiError> {
