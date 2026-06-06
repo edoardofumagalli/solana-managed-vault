@@ -1,2 +1,25 @@
 .DS_Store
 progress-report.md
+
+# Local editor settings
+.vscode/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# JavaScript dependencies and generated local validator state
+anchor_managed_vault/node_modules/
+anchor_managed_vault/.anchor/
+anchor_managed_vault/.surfpool/
+anchor_managed_vault/test-ledger/
+anchor_managed_vault/**/test-ledger/
+
+# Rust build outputs
+anchor_managed_vault/target/
+backend/target/
+backend/.env
+
+# Runtime logs
+*.log
