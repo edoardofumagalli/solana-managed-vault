@@ -108,10 +108,37 @@ function formatMeta(meta) {
 }
 
 function printBackendResponse(response) {
+  const summary = response.summary || {};
+
   console.log("Backend response");
-  console.log(`action: ${response.summary.action}`);
-  console.log(`vault: ${response.summary.vault}`);
-  console.log(`amount: ${response.summary.amount}`);
+  console.log(`action: ${summary.action}`);
+  console.log(`vault: ${summary.vault}`);
+
+  if (summary.actor) {
+    console.log(`actor: ${summary.actor.role} ${summary.actor.address}`);
+  }
+
+  if (Array.isArray(summary.amounts) && summary.amounts.length > 0) {
+    console.log("amounts:");
+    for (const amount of summary.amounts) {
+      console.log(`  ${amount.kind}: ${amount.raw}`);
+    }
+  }
+
+  if (Array.isArray(summary.accounts) && summary.accounts.length > 0) {
+    console.log("summary accounts:");
+    for (const account of summary.accounts) {
+      console.log(`  ${account.role}: ${account.address}`);
+    }
+  }
+
+  if (summary.details && Object.keys(summary.details).length > 0) {
+    console.log("details:");
+    for (const [key, value] of Object.entries(summary.details)) {
+      console.log(`  ${key}: ${value}`);
+    }
+  }
+
   console.log(`fee payer: ${response.feePayer}`);
   console.log(`required signers: ${response.requiredSigners.join(", ")}`);
   console.log(`recent blockhash: ${response.recentBlockhash}`);

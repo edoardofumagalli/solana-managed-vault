@@ -4,8 +4,8 @@ use tokio::task;
 
 use crate::{
     api::{
-        ApiError, ApiResult, DepositTransactionRequest, TransactionBuildResponse,
-        TransactionSummary,
+        ApiError, ApiResult, DepositTransactionRequest, TransactionAction,
+        TransactionBuildResponse, TransactionSummary,
     },
     builders::deposit::{
         build_deposit_instruction, parse_deposit_request, resolve_deposit_accounts,
@@ -68,11 +68,12 @@ async fn build_deposit_transaction(
         fee_payer: unsigned_transaction.fee_payer.to_string(),
         recent_blockhash: unsigned_transaction.recent_blockhash.to_string(),
         last_valid_block_height,
-        summary: TransactionSummary {
-            action: "deposit".to_string(),
-            vault: parsed_request.vault.to_string(),
-            amount: parsed_request.amount.to_string(),
-        },
+        summary: TransactionSummary::new(TransactionAction::Deposit, parsed_request.vault)
+            .with_actor("user", deposit_accounts.depositor)
+            .with_amount("underlying", parsed_request.amount)
+            .with_account("underlying_mint", deposit_accounts.underlying_mint)
+            .with_account("share_mint", deposit_accounts.share_mint)
+            .with_account("vault_token_account", deposit_accounts.vault_token_account),
         simulation,
     }))
 }

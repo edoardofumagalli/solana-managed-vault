@@ -61,7 +61,26 @@ Proposed response:
     "summary": {
         "action": "deposit",
         "vault": "<vault public key>",
-        "amount": "1000000"
+        "actor": {
+            "role": "user",
+            "address": "<user public key>"
+        },
+        "amounts": [
+            {
+                "kind": "underlying",
+                "raw": "1000000"
+            }
+        ],
+        "accounts": [
+            {
+                "role": "underlying_mint",
+                "address": "<underlying mint public key>"
+            },
+            {
+                "role": "share_mint",
+                "address": "<share mint public key>"
+            }
+        ]
     }
 }
 ```
@@ -73,6 +92,15 @@ For user actions, the transaction is returned unsigned and must be signed by the
 For permissionless or cranker actions, the API should still require an explicit `feePayer` input. This wallet is not treated as a vault authority; it only signs the outer Solana transaction so the transaction can pay network fees. When the Anchor instruction has a non-privileged signer account such as `executor` or `cranker`, the backend should use the same public key as both the instruction signer account and the transaction fee payer unless a later endpoint explicitly supports multiple signers.
 
 The response includes a human-readable `summary` so clients can display what the user is about to sign.
+
+The summary should use a stable common shape across all transaction builders:
+
+- `action`: enum-like action name serialized as `snake_case`, such as `deposit`, `request_withdraw`, or `sync_module_nav`.
+- `vault`: the vault public key affected by the action.
+- `actor`: optional primary actor for the instruction, such as `user`, `manager`, `emergency_admin`, `cranker`, or `withdraw_user`.
+- `amounts`: optional list of raw integer amounts. Each amount has a `kind`, such as `underlying`, `shares`, `reported_float_value`, or `module_underlying`.
+- `accounts`: optional list of important semantic accounts, such as `underlying_mint`, `share_mint`, `receiver_token_account`, `module_entry`, or `module_program`.
+- `details`: optional string map for small identifiers that are not accounts or amounts, such as `ticketIndex`, `requestId`, or `policySeed`.
 
 ## 5. Who Signs And Who Sends
 
