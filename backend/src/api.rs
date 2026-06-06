@@ -80,6 +80,16 @@ pub struct DepositTransactionRequest {
     pub simulate: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestWithdrawTransactionRequest {
+    pub vault: String,
+    pub user: String,
+    pub shares_amount: String,
+    #[serde(default)]
+    pub simulate: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionBuildResponse {
@@ -144,7 +154,6 @@ impl TransactionSummary {
         self
     }
 
-    #[allow(dead_code)]
     pub fn with_detail(mut self, key: impl Into<String>, value: impl ToString) -> Self {
         self.details.insert(key.into(), value.to_string());
         self
