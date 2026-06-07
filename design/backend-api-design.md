@@ -414,7 +414,7 @@ If a backend signer is introduced later for cranking, it should be scoped to per
 4. Support optional `simulate: true` for deposit transactions, using unsigned transactions with signature verification disabled.
 5. Add a small client script that calls the endpoint and prints the decoded transaction summary, including static account metas and compiled instruction data.
 
-### Phase 2.5: Shared Transaction Utilities
+### Phase 2.1: Shared Transaction Utilities
 
 Before adding more endpoint families, extract the repeated transaction-building pieces introduced by the deposit endpoint:
 
@@ -424,12 +424,25 @@ Before adding more endpoint families, extract the repeated transaction-building 
 4. Preserve the user-wallet fee-payer model for normal user actions.
 5. Use an explicit `feePayer` input for permissionless/cranker actions such as `process_withdraw`, because Solana transactions still require a fee payer signer even when the on-chain instruction has no user signer.
 
+### Phase 2.2: Manual Transaction Testing Utilities
+
+Keep local backend testing modular instead of building one large end-to-end script:
+
+1. Add a dedicated backend fixture setup script that prepares localnet state and writes a fixture JSON file. This replaces using the broader playground for backend endpoint testing.
+2. Keep one inspect script per backend endpoint. Each script calls the endpoint, prints the backend summary, decodes the returned `VersionedTransaction`, and can save the raw build response with `--output`.
+3. Store local script outputs under `.tmp/`, which is ignored by git.
+4. Use one separate signing script for saved backend transaction builds. By default it only reviews and validates the saved response; explicit flags are required to sign or send.
+5. Before signing, the script must verify the saved response schema, required signer, fee payer, transaction blockhash, and `lastValidBlockHeight`.
+6. Before sending, the script must simulate the signed transaction and abort if simulation fails.
+7. If the saved blockhash is close to expiry, rebuild the transaction by rerunning the relevant inspect script instead of replacing the blockhash locally.
+8. Keep the runnable manual workflow documented in [`backend-manual-testing.md`](backend-manual-testing.md) and extend it as each new endpoint family is added.
+
 ### Phase 3: User Withdraw Builders
 
 1. Add `request_withdraw`.
 2. Add `cancel_withdraw`.
 3. Add `process_withdraw`.
-4. Reuse the shared simulation service from Phase 2.5 for each withdraw endpoint.
+4. Reuse the shared simulation service from Phase 2.1 for each withdraw endpoint.
 
 ### Phase 4: Manager Builders
 

@@ -1,6 +1,9 @@
 const anchor = require("@coral-xyz/anchor");
+const fs = require("fs");
+const path = require("path");
 
 const DEFAULT_BACKEND_URL = "http://127.0.0.1:8080";
+const OUTPUT_SCHEMA = "managed-vault.backendTransactionBuild.v1";
 
 function usageError(message) {
   const error = new Error(message);
@@ -40,6 +43,8 @@ function parseArgs(argv) {
       args.user = value;
     } else if (key === "amount") {
       args.amount = value;
+    } else if (key === "output") {
+      args.output = value;
     } else {
       throw usageError(`Unknown argument: ${arg}`);
     }
@@ -64,6 +69,7 @@ Usage:
     --user <user_pubkey> \\
     --amount <base_units> \\
     [--simulate] \\
+    [--output .tmp/deposit-transaction.json] \\
     [--backend-url http://127.0.0.1:8080]
 
 Environment:
@@ -199,6 +205,13 @@ function printDecodedTransaction(transaction) {
   });
 }
 
+function writeOutputFile(outputPath, payload) {
+  const resolvedPath = path.resolve(outputPath);
+  fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+  fs.writeFileSync(resolvedPath, `${JSON.stringify(payload, null, 2)}\n`);
+  console.log(`\nSaved transaction build response to ${resolvedPath}`);
+}
+
 async function main() {
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
     printUsage();
@@ -207,17 +220,18 @@ async function main() {
 
   const args = parseArgs(process.argv.slice(2));
   const endpoint = new URL("/transactions/deposit", args.backendUrl);
+  const requestBody = {
+    vault: args.vault,
+    user: args.user,
+    amount: args.amount,
+    simulate: args.simulate,
+  };
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "content-type": "application/json",
     },
-    body: JSON.stringify({
-      vault: args.vault,
-      user: args.user,
-      amount: args.amount,
-      simulate: args.simulate,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   const responseBody = await response.text();
@@ -237,6 +251,17 @@ async function main() {
 
   printBackendResponse(parsedBody);
   printDecodedTransaction(transaction);
+
+  if (args.output) {
+    writeOutputFile(args.output, {
+      schema: OUTPUT_SCHEMA,
+      createdAt: new Date().toISOString(),
+      backendUrl: args.backendUrl,
+      endpoint: endpoint.toString(),
+      request: requestBody,
+      response: parsedBody,
+    });
+  }
 }
 
 main().catch((error) => {
