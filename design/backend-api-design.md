@@ -174,6 +174,8 @@ If the on-chain account list contains a non-privileged signer such as `executor`
 | `POST /transactions/modules/recall` | `vault`, `manager`, `moduleEntry`, `amount`, module-specific accounts | Vault state, module entry, module call authority PDA, remaining accounts for module `withdraw(amount)` |
 | `POST /transactions/modules/sync-nav` | `vault`, `moduleEntry`, `feePayer`, module-specific accounts | Vault state, module entry, module-specific NAV accounts; backend uses `feePayer` as cranker |
 | `POST /transactions/emergency-shutdown` | `vault`, `emergencyAdmin` | Vault state |
+| `POST /transactions/nominate-manager` | `vault`, `manager`, `newManager` | Vault state; backend pre-checks that `manager` is the current manager |
+| `POST /transactions/accept-manager` | `vault`, `pendingManager` | Vault state; backend pre-checks that `pendingManager` is the currently nominated pending manager |
 
 For Kamino-specific module endpoints, the backend may also need reserve, market, oracle, collateral mint, liquidity supply, and token accounts. In the first version these can be read from configuration or fixtures before a full discovery layer exists.
 
@@ -290,6 +292,7 @@ These build transactions requiring the manager or an executor:
 - `recall_from_module`
 - `register_module`
 - `nominate_manager`
+- `accept_manager`
 
 The backend can pre-check that the provided signer matches the vault manager where appropriate.
 
@@ -459,10 +462,10 @@ Build the manager/admin endpoints in a liquidity-first order. This keeps the bac
    - default `sourceTokenAccount` to the caller's underlying ATA when omitted;
    - do not enforce manager role because the on-chain instruction is intentionally permissionless;
    - include `underlying`, `underlying_mint`, `caller_underlying_token_account`, and `vault_token_account` in the summary.
-3. Add the matching manual inspect script and extend `backend-manual-testing.md`:
-   - save to `.tmp/manager-deposit-transaction.json`;
-   - support `--simulate` and `--output`;
-   - verify that the decoded transaction has one signer, the caller.
+3. Defer manager/admin manual inspect scripts until after this endpoint surface is stable:
+   - do not add manager/admin inspect scripts in this phase;
+   - keep the current manual scripts focused on the deposit and user-withdraw flow;
+   - later extend `backend-manual-testing.md` and add one inspect script per manager/admin endpoint.
 4. Add `POST /transactions/report-float-value`:
    - request: `vault`, `manager`, `reportedFloatValue`, optional `simulate`;
    - signer and fee payer: `manager`;
@@ -489,7 +492,8 @@ Build the manager/admin endpoints in a liquidity-first order. This keeps the bac
 8. Add `nominate_manager` and `accept_manager` after the core manager float and emergency flows:
    - `nominate_manager` is signed by the current manager and carries `newManager`;
    - `accept_manager` is signed by the pending manager;
-   - both should use the same transaction response shape and manual inspect-script pattern.
+   - both should use the same transaction response shape;
+   - manual inspect scripts for these endpoints are deferred with the other manager/admin scripts.
 
 ### Phase 5: Module Builders
 

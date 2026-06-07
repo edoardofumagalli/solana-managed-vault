@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use anchor_lang::{InstructionData, ToAccountMetas};
 use anchor_managed_vault::{
     accounts,
@@ -18,6 +16,7 @@ use crate::api::{
     ApiError, CancelWithdrawTransactionRequest, ProcessWithdrawTransactionRequest,
     RequestWithdrawTransactionRequest,
 };
+use crate::builders::common::{parse_positive_u64, parse_pubkey, parse_u64};
 
 #[derive(Debug)]
 pub struct ParsedRequestWithdrawTransactionRequest {
@@ -351,32 +350,4 @@ pub fn build_process_withdraw_instruction(accounts: &ProcessWithdrawAccounts) ->
         .to_account_metas(None),
         data: instruction::ProcessWithdraw {}.data(),
     }
-}
-
-fn parse_pubkey(field: &str, value: &str) -> Result<Pubkey, ApiError> {
-    Pubkey::from_str(value).map_err(|_| {
-        ApiError::bad_request(format!(
-            "{field} must be a valid Solana public key, received: {value}"
-        ))
-    })
-}
-
-fn parse_u64(field: &str, value: &str) -> Result<u64, ApiError> {
-    value.parse::<u64>().map_err(|_| {
-        ApiError::bad_request(format!(
-            "{field} must be a u64 integer string, received: {value}"
-        ))
-    })
-}
-
-fn parse_positive_u64(field: &str, value: &str) -> Result<u64, ApiError> {
-    let amount = parse_u64(field, value)?;
-
-    if amount == 0 {
-        return Err(ApiError::bad_request(format!(
-            "{field} must be greater than zero"
-        )));
-    }
-
-    Ok(amount)
 }

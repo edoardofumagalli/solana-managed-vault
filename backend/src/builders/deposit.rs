@@ -1,12 +1,13 @@
-use std::str::FromStr;
-
 use anchor_lang::{InstructionData, ToAccountMetas};
 use anchor_managed_vault::{accounts, instruction, state::Vault, ID as VAULT_PROGRAM_ID};
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
 use spl_associated_token_account::get_associated_token_address_with_program_id;
 use spl_token::ID as TOKEN_PROGRAM_ID;
 
-use crate::api::{ApiError, DepositTransactionRequest};
+use crate::{
+    api::{ApiError, DepositTransactionRequest},
+    builders::common::{parse_positive_u64, parse_pubkey},
+};
 
 #[derive(Debug)]
 pub struct ParsedDepositTransactionRequest {
@@ -86,28 +87,4 @@ pub fn build_deposit_instruction(accounts: &DepositAccounts, amount: u64) -> Ins
         .to_account_metas(None),
         data: instruction::Deposit { amount }.data(),
     }
-}
-
-fn parse_pubkey(field: &str, value: &str) -> Result<Pubkey, ApiError> {
-    Pubkey::from_str(value).map_err(|_| {
-        ApiError::bad_request(format!(
-            "{field} must be a valid Solana public key, received: {value}"
-        ))
-    })
-}
-
-fn parse_positive_u64(field: &str, value: &str) -> Result<u64, ApiError> {
-    let amount = value.parse::<u64>().map_err(|_| {
-        ApiError::bad_request(format!(
-            "{field} must be a positive u64 integer string, received: {value}"
-        ))
-    })?;
-
-    if amount == 0 {
-        return Err(ApiError::bad_request(format!(
-            "{field} must be greater than zero"
-        )));
-    }
-
-    Ok(amount)
 }

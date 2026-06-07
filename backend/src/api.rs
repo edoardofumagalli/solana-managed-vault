@@ -37,6 +37,14 @@ impl ApiError {
         }
     }
 
+    pub fn invalid_signer_role(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::FORBIDDEN,
+            code: "INVALID_SIGNER_ROLE".to_string(),
+            message: message.into(),
+        }
+    }
+
     pub fn service_unavailable(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::SERVICE_UNAVAILABLE,
@@ -107,6 +115,77 @@ pub struct ProcessWithdrawTransactionRequest {
     pub user: String,
     pub ticket_index: String,
     pub fee_payer: String,
+    #[serde(default)]
+    pub simulate: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagerDepositTransactionRequest {
+    pub vault: String,
+    pub caller: String,
+    pub amount: String,
+    #[serde(default)]
+    pub source_token_account: Option<String>,
+    #[serde(default)]
+    pub simulate: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportFloatValueTransactionRequest {
+    pub vault: String,
+    pub manager: String,
+    pub reported_float_value: String,
+    #[serde(default)]
+    pub simulate: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestManagerWithdrawTransactionRequest {
+    pub vault: String,
+    pub manager: String,
+    pub amount: String,
+    pub receiver_token_account: String,
+    #[serde(default)]
+    pub simulate: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecuteManagerWithdrawTransactionRequest {
+    pub vault: String,
+    pub request_id: String,
+    pub fee_payer: String,
+    #[serde(default)]
+    pub simulate: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivateEmergencyShutdownTransactionRequest {
+    pub vault: String,
+    pub emergency_admin: String,
+    #[serde(default)]
+    pub simulate: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NominateManagerTransactionRequest {
+    pub vault: String,
+    pub manager: String,
+    pub new_manager: String,
+    #[serde(default)]
+    pub simulate: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcceptManagerTransactionRequest {
+    pub vault: String,
+    pub pending_manager: String,
     #[serde(default)]
     pub simulate: bool,
 }
