@@ -444,12 +444,52 @@ Keep local backend testing modular instead of building one large end-to-end scri
 3. Add `process_withdraw`.
 4. Reuse the shared simulation service from Phase 2.1 for each withdraw endpoint.
 
-### Phase 4: Manager Builders
+### Phase 4: Manager And Admin Builders
 
-1. Add manager role pre-checks.
-2. Add manager float endpoints.
-3. Add manager withdraw timelock endpoints.
-4. Add emergency shutdown endpoint.
+Build the manager/admin endpoints in a liquidity-first order. This keeps the backend useful for the user-withdraw flow before adding the full manager withdrawal timelock surface.
+
+1. Add shared role and request helpers for manager/admin endpoints:
+   - reusable pubkey and positive-u64 parsing;
+   - a manager role pre-check that compares the requested signer with `vault.manager`;
+   - an emergency-admin pre-check that compares the requested signer with `vault.emergency_admin`;
+   - shared response-summary conventions for manager, caller, executor, and emergency-admin actors.
+2. Add `POST /transactions/manager-deposit`:
+   - request: `vault`, `caller`, `amount`, optional `sourceTokenAccount`, optional `simulate`;
+   - signer and fee payer: `caller`;
+   - default `sourceTokenAccount` to the caller's underlying ATA when omitted;
+   - do not enforce manager role because the on-chain instruction is intentionally permissionless;
+   - include `underlying`, `underlying_mint`, `caller_underlying_token_account`, and `vault_token_account` in the summary.
+3. Add the matching manual inspect script and extend `backend-manual-testing.md`:
+   - save to `.tmp/manager-deposit-transaction.json`;
+   - support `--simulate` and `--output`;
+   - verify that the decoded transaction has one signer, the caller.
+4. Add `POST /transactions/report-float-value`:
+   - request: `vault`, `manager`, `reportedFloatValue`, optional `simulate`;
+   - signer and fee payer: `manager`;
+   - backend pre-checks that `manager == vault.manager`;
+   - keep it allowed during emergency shutdown, matching on-chain behavior;
+   - include `reported_float_value`, `underlying_mint`, and `vault_token_account` in the summary.
+5. Add `POST /transactions/manager-withdraw/request`:
+   - request: `vault`, `manager`, `amount`, `receiverTokenAccount`, optional `simulate`;
+   - signer and fee payer: `manager`;
+   - backend pre-checks that `manager == vault.manager`;
+   - derive `manager_withdraw_request` from `vault.next_manager_withdraw_request_id`;
+   - include `requestId`, `managerWithdrawDelaySlots`, and `receiver_token_account` in the summary.
+6. Add `POST /transactions/manager-withdraw/execute`:
+   - request: `vault`, `requestId`, `feePayer`, optional `simulate`;
+   - signer and fee payer: `feePayer`, used as the permissionless on-chain `executor`;
+   - fetch and validate the `ManagerWithdrawRequest` account before building;
+   - read the receiver token account from the request account rather than asking the client to resubmit it;
+   - include `requestId`, `executor`, `receiver_token_account`, and `underlying` amount in the summary.
+7. Add `POST /transactions/emergency-shutdown`:
+   - request: `vault`, `emergencyAdmin`, optional `simulate`;
+   - signer and fee payer: `emergencyAdmin`;
+   - backend pre-checks that `emergencyAdmin == vault.emergency_admin`;
+   - keep this endpoint separate from manager endpoints because the authority role is different.
+8. Add `nominate_manager` and `accept_manager` after the core manager float and emergency flows:
+   - `nominate_manager` is signed by the current manager and carries `newManager`;
+   - `accept_manager` is signed by the pending manager;
+   - both should use the same transaction response shape and manual inspect-script pattern.
 
 ### Phase 5: Module Builders
 
