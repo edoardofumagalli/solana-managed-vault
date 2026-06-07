@@ -18,8 +18,12 @@ setup fixture
     -> sign/send deposit
     -> inspect request_withdraw
     -> sign/send request_withdraw
-    -> inspect cancel_withdraw
-    -> sign/send cancel_withdraw
+    -> choose one ticket outcome:
+        -> inspect cancel_withdraw
+        -> sign/send cancel_withdraw
+        or
+        -> inspect process_withdraw
+        -> sign/send process_withdraw
 ```
 
 ## Prerequisites
@@ -62,6 +66,7 @@ Expected files for the current flow:
 .tmp/deposit-transaction.json
 .tmp/request-withdraw-transaction.json
 .tmp/cancel-withdraw-transaction.json
+.tmp/process-withdraw-transaction.json
 ```
 
 `.tmp/` is ignored by git. These files are local test artifacts and should not be committed.
@@ -101,6 +106,7 @@ VAULT=$(jq -r '.accounts.vault' .tmp/backend-fixture.json)
 USER=$(jq -r '.user' .tmp/backend-fixture.json)
 DEPOSIT_AMOUNT=$(jq -r '.amounts.suggestedDeposit' .tmp/backend-fixture.json)
 SHARES_AMOUNT=$(jq -r '.amounts.suggestedSharesToWithdraw' .tmp/backend-fixture.json)
+FEE_PAYER="$USER"
 ```
 
 ## Step 2: Inspect Deposit
@@ -194,6 +200,8 @@ npm run backend:tx:sign -- \
 
 With the default fixture values, this requests withdrawal of `250000` raw share units. With 6 decimals, the user's visible share balance should move from `1` to `0.75`, because `0.25` shares are escrowed in the withdraw ticket.
 
+After this step, choose either cancel or process for the pending ticket. A ticket can only be completed once. If you test cancel first and then want to test process, create a fresh fixture or submit a new withdrawal request.
+
 ## Step 6: Inspect Cancel Withdraw
 
 Build and inspect the cancel transaction using the ticket index from the request response:
@@ -224,6 +232,42 @@ npm run backend:tx:sign -- \
 
 After cancel, the escrowed shares should return to the user. With the default fixture values, the visible share balance should move from `0.75` back to `1`.
 
+## Step 8: Inspect Process Withdraw
+
+Build and inspect the process transaction using the ticket index from the request response:
+
+```bash
+npm run backend:process-withdraw:inspect -- \
+  --vault "$VAULT" \
+  --user "$USER" \
+  --ticket-index "$TICKET_INDEX" \
+  --fee-payer "$FEE_PAYER" \
+  --simulate \
+  --output .tmp/process-withdraw-transaction.json
+```
+
+Expected checks:
+
+- `summary.action` is `process_withdraw`;
+- `summary.actor.role` is `fee_payer`;
+- `summary.accounts` contains `withdraw_user`;
+- `summary.details.ticketIndex` matches the requested ticket;
+- backend simulation has `ok: true`;
+- decoded transaction has one signature slot for the fee payer.
+
+`process_withdraw` is permissionless at the vault-instruction level, but the Solana transaction still needs a fee payer signer. In the manual local flow, `FEE_PAYER="$USER"` keeps signing simple.
+
+## Step 9: Sign And Send Process Withdraw
+
+```bash
+npm run backend:tx:sign -- \
+  --input .tmp/process-withdraw-transaction.json \
+  --send \
+  --wallet "$HOME/.config/solana/id.json"
+```
+
+After process, the escrowed shares are burned and underlying is paid back to the user's underlying token account. With the default fixture values, the visible share balance should stay at `0.75` and the visible underlying balance should move from `0` to `0.25`.
+
 ## Interpreting Saved Transaction Builds
 
 Every inspect script writes a JSON file with schema:
@@ -248,6 +292,7 @@ Useful commands:
 jq '.response.summary' .tmp/deposit-transaction.json
 jq '.response.simulation.ok' .tmp/request-withdraw-transaction.json
 jq '.response.summary.details.ticketIndex' .tmp/cancel-withdraw-transaction.json
+jq '.response.summary.details.ticketIndex' .tmp/process-withdraw-transaction.json
 ```
 
 ## Blockhash Expiry
@@ -264,13 +309,13 @@ Covered:
 - `POST /transactions/deposit`;
 - `POST /transactions/request-withdraw`;
 - `POST /transactions/cancel-withdraw`;
+- `POST /transactions/process-withdraw`;
 - unsigned transaction inspection;
 - saved transaction review;
 - explicit local signing, simulation, send, and confirmation.
 
 Not covered yet:
 
-- `process_withdraw`;
 - manager endpoints;
 - module deploy/recall endpoints;
 - Kamino-specific backend flows;
