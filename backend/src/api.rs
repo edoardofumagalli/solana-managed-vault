@@ -90,6 +90,16 @@ pub struct RequestWithdrawTransactionRequest {
     pub simulate: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelWithdrawTransactionRequest {
+    pub vault: String,
+    pub user: String,
+    pub ticket_index: String,
+    #[serde(default)]
+    pub simulate: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionBuildResponse {
