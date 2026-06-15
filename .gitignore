@@ -13,6 +13,7 @@ progress-report.md
 anchor_managed_vault/node_modules/
 anchor_managed_vault/.anchor/
 anchor_managed_vault/.surfpool/
+test-ledger/
 anchor_managed_vault/test-ledger/
 anchor_managed_vault/**/test-ledger/
 
