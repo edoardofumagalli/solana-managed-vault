@@ -1,6 +1,6 @@
 use anchor_lang::AccountDeserialize;
 use anchor_managed_vault::{
-    state::{ManagerWithdrawRequest, Vault},
+    state::{ManagerWithdrawRequest, ModuleEntry, Vault},
     ID as VAULT_PROGRAM_ID,
 };
 use solana_client::rpc_client::RpcClient;
@@ -51,6 +51,28 @@ pub fn fetch_manager_withdraw_request(
     ManagerWithdrawRequest::try_deserialize(&mut account.data.as_slice()).map_err(|error| {
         ApiError::invalid_account(format!(
             "failed to deserialize manager withdraw request account: {error}"
+        ))
+    })
+}
+
+pub fn fetch_module_entry(
+    rpc_client: &RpcClient,
+    module_entry: &Pubkey,
+) -> Result<ModuleEntry, ApiError> {
+    let account = rpc_client
+        .get_account(module_entry)
+        .map_err(|error| ApiError::not_found(format!("module entry account not found: {error}")))?;
+
+    if account.owner != VAULT_PROGRAM_ID {
+        return Err(ApiError::invalid_account(format!(
+            "module entry account has invalid owner. expected={}, actual={}",
+            VAULT_PROGRAM_ID, account.owner
+        )));
+    }
+
+    ModuleEntry::try_deserialize(&mut account.data.as_slice()).map_err(|error| {
+        ApiError::invalid_account(format!(
+            "failed to deserialize module entry account: {error}"
         ))
     })
 }

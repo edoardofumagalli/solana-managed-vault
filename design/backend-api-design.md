@@ -53,35 +53,35 @@ Proposed response:
 
 ```json
 {
-    "transaction": "<base64 serialized VersionedTransaction>",
-    "requiredSigners": ["<wallet public key>"],
-    "feePayer": "<fee payer public key>",
-    "recentBlockhash": "<blockhash>",
-    "lastValidBlockHeight": 123,
-    "summary": {
-        "action": "deposit",
-        "vault": "<vault public key>",
-        "actor": {
-            "role": "user",
-            "address": "<user public key>"
-        },
-        "amounts": [
-            {
-                "kind": "underlying",
-                "raw": "1000000"
-            }
-        ],
-        "accounts": [
-            {
-                "role": "underlying_mint",
-                "address": "<underlying mint public key>"
-            },
-            {
-                "role": "share_mint",
-                "address": "<share mint public key>"
-            }
-        ]
-    }
+  "transaction": "<base64 serialized VersionedTransaction>",
+  "requiredSigners": ["<wallet public key>"],
+  "feePayer": "<fee payer public key>",
+  "recentBlockhash": "<blockhash>",
+  "lastValidBlockHeight": 123,
+  "summary": {
+    "action": "deposit",
+    "vault": "<vault public key>",
+    "actor": {
+      "role": "user",
+      "address": "<user public key>"
+    },
+    "amounts": [
+      {
+        "kind": "underlying",
+        "raw": "1000000"
+      }
+    ],
+    "accounts": [
+      {
+        "role": "underlying_mint",
+        "address": "<underlying mint public key>"
+      },
+      {
+        "role": "share_mint",
+        "address": "<share mint public key>"
+      }
+    ]
+  }
 }
 ```
 
@@ -106,23 +106,23 @@ The summary should use a stable common shape across all transaction builders:
 
 Signing rules should match the Anchor account constraints.
 
-| Action | Required signer | Who sends the transaction |
-| --- | --- | --- |
-| `deposit` | User/depositor | Client wallet |
-| `request_withdraw` | User | Client wallet |
-| `cancel_withdraw` | User | Client wallet |
-| `process_withdraw` | Transaction fee payer only | Client, backend, or cranker |
-| `manager_deposit` | Caller returning funds | Client wallet or operational wallet |
-| `request_manager_withdraw` | Manager | Manager wallet |
-| `execute_manager_withdraw` | Permissionless executor signer; use fee payer by default | Manager, backend, or cranker |
-| `report_float_value` | Manager | Manager wallet |
-| `register_module` | Manager | Manager wallet |
-| `deploy_to_module` | Manager | Manager wallet |
-| `recall_from_module` | Manager | Manager wallet |
-| `sync_module_nav` | Permissionless cranker signer; use fee payer by default | Client, backend, or cranker |
-| `nominate_manager` | Current manager | Manager wallet |
-| `accept_manager` | Pending manager | Pending manager wallet |
-| `activate_emergency_shutdown` | Emergency admin | Emergency admin wallet |
+| Action                        | Required signer                                          | Who sends the transaction           |
+| ----------------------------- | -------------------------------------------------------- | ----------------------------------- |
+| `deposit`                     | User/depositor                                           | Client wallet                       |
+| `request_withdraw`            | User                                                     | Client wallet                       |
+| `cancel_withdraw`             | User                                                     | Client wallet                       |
+| `process_withdraw`            | Transaction fee payer only                               | Client, backend, or cranker         |
+| `manager_deposit`             | Caller returning funds                                   | Client wallet or operational wallet |
+| `request_manager_withdraw`    | Manager                                                  | Manager wallet                      |
+| `execute_manager_withdraw`    | Permissionless executor signer; use fee payer by default | Manager, backend, or cranker        |
+| `report_float_value`          | Manager                                                  | Manager wallet                      |
+| `register_module`             | Manager                                                  | Manager wallet                      |
+| `deploy_to_module`            | Manager                                                  | Manager wallet                      |
+| `recall_from_module`          | Manager                                                  | Manager wallet                      |
+| `sync_module_nav`             | Permissionless cranker signer; use fee payer by default  | Client, backend, or cranker         |
+| `nominate_manager`            | Current manager                                          | Manager wallet                      |
+| `accept_manager`              | Pending manager                                          | Pending manager wallet              |
+| `activate_emergency_shutdown` | Emergency admin                                          | Emergency admin wallet              |
 
 The backend may eventually send permissionless cranking transactions itself, but this should be a separate mode with a clearly configured backend signer.
 
@@ -138,9 +138,9 @@ Most endpoints need:
 
 ```json
 {
-    "vault": "<vault public key>",
-    "wallet": "<signer public key>",
-    "amount": "<integer string>"
+  "vault": "<vault public key>",
+  "wallet": "<signer public key>",
+  "amount": "<integer string>"
 }
 ```
 
@@ -150,8 +150,8 @@ Permissionless or cranker endpoints use `feePayer` instead of `wallet` when ther
 
 ```json
 {
-    "vault": "<vault public key>",
-    "feePayer": "<wallet public key>"
+  "vault": "<vault public key>",
+  "feePayer": "<wallet public key>"
 }
 ```
 
@@ -159,25 +159,67 @@ If the on-chain account list contains a non-privileged signer such as `executor`
 
 ### Endpoint Inputs
 
-| Endpoint | Minimal request data | Backend derives or reads |
-| --- | --- | --- |
-| `POST /transactions/deposit` | `vault`, `user`, `amount` | Vault state, underlying mint, share mint, vault token account, user underlying ATA, user share ATA |
-| `POST /transactions/request-withdraw` | `vault`, `user`, `sharesAmount` | Vault state, share mint, user share ATA, user position PDA, next ticket PDA, escrow share token account |
-| `POST /transactions/cancel-withdraw` | `vault`, `user`, `ticketIndex` | Withdraw ticket PDA, escrow share token account, user share ATA |
-| `POST /transactions/process-withdraw` | `vault`, `user`, `ticketIndex`, `feePayer` | Withdraw ticket PDA, user position PDA, escrow share token account, share mint, vault token account, user underlying ATA |
-| `POST /transactions/manager-deposit` | `vault`, `caller`, `amount`, optional source token account | Vault state, vault token account, underlying mint, caller underlying ATA if source not provided |
-| `POST /transactions/manager-withdraw/request` | `vault`, `manager`, `amount`, `receiverTokenAccount` | Manager withdraw request PDA, vault token account, vault state |
-| `POST /transactions/manager-withdraw/execute` | `vault`, `requestId`, `feePayer` | Manager withdraw request PDA, vault token account, receiver token account from request; backend uses `feePayer` as executor |
-| `POST /transactions/report-float-value` | `vault`, `manager`, `reportedFloatValue` | Vault state, vault token account |
-| `POST /transactions/modules/register` | `vault`, `manager`, `moduleProgram`, `moduleState`, `moduleUnderlyingTokenAccount`, `policySeed` | Module entry PDA and vault state |
-| `POST /transactions/modules/deploy` | `vault`, `manager`, `moduleEntry`, `amount`, module-specific accounts | Vault state, module entry, module call authority PDA, remaining accounts for module `deposit(amount)` |
-| `POST /transactions/modules/recall` | `vault`, `manager`, `moduleEntry`, `amount`, module-specific accounts | Vault state, module entry, module call authority PDA, remaining accounts for module `withdraw(amount)` |
-| `POST /transactions/modules/sync-nav` | `vault`, `moduleEntry`, `feePayer`, module-specific accounts | Vault state, module entry, module-specific NAV accounts; backend uses `feePayer` as cranker |
-| `POST /transactions/emergency-shutdown` | `vault`, `emergencyAdmin` | Vault state |
-| `POST /transactions/nominate-manager` | `vault`, `manager`, `newManager` | Vault state; backend pre-checks that `manager` is the current manager |
-| `POST /transactions/accept-manager` | `vault`, `pendingManager` | Vault state; backend pre-checks that `pendingManager` is the currently nominated pending manager |
+| Endpoint                                      | Minimal request data                                                                             | Backend derives or reads                                                                                                                               |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /transactions/deposit`                  | `vault`, `user`, `amount`                                                                        | Vault state, underlying mint, share mint, vault token account, user underlying ATA, user share ATA                                                     |
+| `POST /transactions/request-withdraw`         | `vault`, `user`, `sharesAmount`                                                                  | Vault state, share mint, user share ATA, user position PDA, next ticket PDA, escrow share token account                                                |
+| `POST /transactions/cancel-withdraw`          | `vault`, `user`, `ticketIndex`                                                                   | Withdraw ticket PDA, escrow share token account, user share ATA                                                                                        |
+| `POST /transactions/process-withdraw`         | `vault`, `user`, `ticketIndex`, `feePayer`                                                       | Withdraw ticket PDA, user position PDA, escrow share token account, share mint, vault token account, user underlying ATA                               |
+| `POST /transactions/manager-deposit`          | `vault`, `caller`, `amount`, optional source token account                                       | Vault state, vault token account, underlying mint, caller underlying ATA if source not provided                                                        |
+| `POST /transactions/manager-withdraw/request` | `vault`, `manager`, `amount`, `receiverTokenAccount`                                             | Manager withdraw request PDA, vault token account, vault state                                                                                         |
+| `POST /transactions/manager-withdraw/execute` | `vault`, `requestId`, `feePayer`                                                                 | Manager withdraw request PDA, vault token account, receiver token account from request; backend uses `feePayer` as executor                            |
+| `POST /transactions/report-float-value`       | `vault`, `manager`, `reportedFloatValue`                                                         | Vault state, vault token account                                                                                                                       |
+| `POST /transactions/modules/register`         | `vault`, `manager`, `moduleProgram`, `moduleState`, `moduleUnderlyingTokenAccount`, `policySeed` | Module entry PDA and vault state                                                                                                                       |
+| `POST /transactions/modules/deploy`           | `vault`, `manager`, `moduleEntry`, `amount`, `remainingAccounts`                                 | Vault state, module entry, module call authority PDA, module program, module underlying token account, remaining accounts for module `deposit(amount)` |
+| `POST /transactions/modules/recall`           | `vault`, `manager`, `moduleEntry`, `amount`, `remainingAccounts`                                 | Vault state, module entry, module call authority PDA, module program, vault token account, remaining accounts for module `withdraw(amount)`            |
+| `POST /transactions/modules/sync-nav`         | `vault`, `moduleEntry`, `feePayer`                                                               | Vault state, module entry, module state, module program; backend uses `feePayer` as cranker                                                            |
+| `POST /transactions/emergency-shutdown`       | `vault`, `emergencyAdmin`                                                                        | Vault state                                                                                                                                            |
+| `POST /transactions/nominate-manager`         | `vault`, `manager`, `newManager`                                                                 | Vault state; backend pre-checks that `manager` is the current manager                                                                                  |
+| `POST /transactions/accept-manager`           | `vault`, `pendingManager`                                                                        | Vault state; backend pre-checks that `pendingManager` is the currently nominated pending manager                                                       |
 
 For Kamino-specific module endpoints, the backend may also need reserve, market, oracle, collateral mint, liquidity supply, and token accounts. In the first version these can be read from configuration or fixtures before a full discovery layer exists.
+
+### Module Remaining Accounts
+
+`deploy_to_module` and `recall_from_module` are generic vault instructions. The vault instruction has its own fixed account list, then forwards `remaining_accounts` as the account list for the external module CPI.
+
+The backend should represent those forwarded accounts as an ordered AccountMeta-like JSON array:
+
+```json
+{
+  "remainingAccounts": [
+    {
+      "pubkey": "<account public key>",
+      "isWritable": true,
+      "isSigner": false,
+      "role": "kamino_module_state"
+    }
+  ]
+}
+```
+
+Field rules:
+
+- `pubkey` is required and must parse as a Solana public key.
+- `isWritable` is required and maps directly to Solana `AccountMeta::new` versus `AccountMeta::new_readonly`.
+- `isSigner` is required, but the first backend version should reject `true`. If a future module needs extra external signers, the response contract must also add those signers to `requiredSigners`.
+- `role` is optional and only for human-readable inspection, fixture readability, and transaction summaries. The backend must not use `role` as a security boundary.
+
+Order matters. The backend must preserve `remainingAccounts` exactly as the client or fixture supplies it, because the external module owns its own Anchor account order. A map keyed by role would be easier to read, but it would lose ordering guarantees and would not fit the generic module interface.
+
+The backend should still validate the minimum generic invariants before returning a transaction:
+
+- Fetch `ModuleEntry` from RPC and verify it belongs to the requested vault, is active, and is bound to the stored module program.
+- For deploy, require `remainingAccounts` to include `ModuleEntry.module_state`.
+- For deploy, require `remainingAccounts` to include `ModuleEntry.module_underlying_token_account`, because the module `deposit(amount)` CPI must see the staging token account after the vault has transferred underlying into it.
+- For recall, require `remainingAccounts` to include `ModuleEntry.module_state`.
+- For recall, require `remainingAccounts` to include the vault token account, because the module `withdraw(amount)` CPI must return underlying into the vault.
+
+Some accounts intentionally appear both in the vault instruction's fixed account list and in `remainingAccounts`. For example, deploy has a fixed `module_underlying_token_account` account for the vault transfer, and the same account may also be required by the module deposit CPI. Recall has the same pattern for `vault_token_account`. This duplication is expected: the fixed accounts are for the vault instruction, while `remainingAccounts` is the forwarded CPI account list.
+
+Do not include `module_call_authority` in client-provided `remainingAccounts`. The vault core instruction derives it, prepends it to the module CPI account metas, and signs for it with PDA seeds. Do not include `module_program` as a remaining account either; it is the CPI program id and a fixed vault instruction account.
+
+`sync_module_nav` is different. The current on-chain instruction does not accept `remaining_accounts`; it reads the standard cached NAV header from `ModuleEntry.module_state`. If a module needs a protocol-specific NAV refresh first, such as Kamino `calculate_nav`, that should be handled by a separate module-specific transaction builder or script before calling the generic vault `sync-nav` endpoint.
 
 ## 7. Account Resolution Strategy
 
@@ -336,7 +378,7 @@ For the first version, simulation can be optional and controlled by a request fl
 
 ```json
 {
-    "simulate": true
+  "simulate": true
 }
 ```
 
@@ -344,10 +386,10 @@ If simulation is enabled, the response can include:
 
 ```json
 {
-    "simulation": {
-        "ok": true,
-        "logs": []
-    }
+  "simulation": {
+    "ok": true,
+    "logs": []
+  }
 }
 ```
 
@@ -359,14 +401,14 @@ Example:
 
 ```json
 {
-    "error": {
-        "code": "INVALID_MANAGER",
-        "message": "The provided signer is not the current vault manager.",
-        "details": {
-            "expected": "<manager pubkey>",
-            "received": "<request signer>"
-        }
+  "error": {
+    "code": "INVALID_MANAGER",
+    "message": "The provided signer is not the current vault manager.",
+    "details": {
+      "expected": "<manager pubkey>",
+      "received": "<request signer>"
     }
+  }
 }
 ```
 
@@ -497,10 +539,59 @@ Build the manager/admin endpoints in a liquidity-first order. This keeps the bac
 
 ### Phase 5: Module Builders
 
-1. Add module entry resolver.
-2. Add generic deploy/recall builders.
-3. Add Kamino account configuration for the known reserve.
-4. Add Surfpool-backed integration tests.
+1. Add shared module request helpers:
+   - parse `moduleEntry`, `moduleProgram`, `moduleState`, `moduleUnderlyingTokenAccount`, and `policySeed`;
+   - parse `remainingAccounts` into ordered Solana account metas;
+   - reject `remainingAccounts[*].isSigner = true` in the first version;
+   - preserve optional `role` labels for summaries and debugging only.
+2. Add module account resolvers:
+   - derive the `module_entry` PDA for `register_module`;
+   - fetch and deserialize `ModuleEntry` for deploy, recall, and sync-nav;
+   - validate that the module entry belongs to the requested vault and is active;
+   - derive the `module_call_authority` PDA for deploy and recall.
+3. Add `POST /transactions/modules/register`:
+   - request: `vault`, `manager`, `moduleProgram`, `moduleState`, `moduleUnderlyingTokenAccount`, `policySeed`, optional `simulate`;
+   - signer and fee payer: `manager`;
+   - backend pre-checks that `manager == vault.manager`;
+   - derive `module_entry` from vault, module program, and policy seed;
+   - include `module_entry`, `module_program`, `module_state`, `module_underlying_token_account`, and `policySeed` in the summary.
+4. Add `POST /transactions/modules/sync-nav`:
+   - request: `vault`, `moduleEntry`, `feePayer`, optional `simulate`;
+   - signer and fee payer: `feePayer`, used as the permissionless on-chain `cranker`;
+   - fetch `ModuleEntry` and use its stored `module_state` and `module_program_id`;
+   - do not accept `remainingAccounts` for the current on-chain instruction;
+   - include old cached NAV, module state, module program, and module entry metadata in the summary when available from fetched state.
+5. Add `POST /transactions/modules/deploy`:
+   - request: `vault`, `manager`, `moduleEntry`, `amount`, `remainingAccounts`, optional `simulate`;
+   - signer and fee payer: `manager`;
+   - backend pre-checks that `manager == vault.manager`;
+   - fetch `ModuleEntry` and use its stored `module_program_id` and `module_underlying_token_account`;
+   - require `remainingAccounts` to include the stored module state and module underlying token account;
+   - pass the remaining account metas in the exact supplied order after the vault instruction's fixed accounts;
+   - include `module_underlying`, `module_entry`, `module_program`, `module_state`, `module_underlying_token_account`, and remaining-account count in the summary.
+6. Add `POST /transactions/modules/recall`:
+   - request: `vault`, `manager`, `moduleEntry`, `amount`, `remainingAccounts`, optional `simulate`;
+   - signer and fee payer: `manager`;
+   - backend pre-checks that `manager == vault.manager`;
+   - fetch `ModuleEntry` and use its stored `module_program_id`;
+   - require `remainingAccounts` to include the stored module state and the vault token account;
+   - pass the remaining account metas in the exact supplied order after the vault instruction's fixed accounts;
+   - include `module_underlying`, `module_entry`, `module_program`, `module_state`, `vault_token_account`, and remaining-account count in the summary.
+7. Add configuration or fixture helpers for known module account lists:
+   - the helper layer is a usability bridge between human-readable module fixture data and the generic `remainingAccounts` array required by `deploy` and `recall`;
+   - keep the HTTP endpoints array-based. The backend route should still receive ordered `remainingAccounts`; helpers or scripts can produce that array from friendlier named fields;
+   - start with the mock yield module because it is small and deterministic. For mock deploy, the generated `remainingAccounts` order is `mock_module_state` writable, then `module_token_account` writable. For mock recall, the order is `mock_module_state` writable, `mock_module_authority` readonly, `underlying_mint` readonly, `module_token_account` writable, `vault_token_account` writable, and `token_program` readonly;
+   - add a Kamino USDC fixture for the known reserve after the generic endpoint shape is working. The fixture should mirror the Anchor account order in `kamino_yield_module` minus `module_call_authority`, which is prepended by the vault program;
+   - store or derive these helper inputs from local fixture output for mock testing first, then from Surfpool/Kamino fixture data for real-account tests;
+   - all generated accounts should keep `isSigner: false` until the backend response contract supports extra module-specific signers.
+8. Add module manual inspect scripts incrementally after the module builder surface is stable:
+   - start with `register_module`, because deploy, recall, and sync-nav need an existing on-chain `ModuleEntry`;
+   - sign and send the saved register transaction with the existing transaction signing script;
+   - add `sync_module_nav` next, because it is permissionless and does not require `remainingAccounts`;
+   - add `deploy_to_module` after a successful deposit and module registration, consuming fixture-generated mock deploy `remainingAccounts`;
+   - add `recall_from_module` after a successful deploy, consuming fixture-generated mock recall `remainingAccounts`;
+   - manual inspect scripts should consume the fixture helpers instead of hardcoding long account arrays in each script;
+   - Surfpool-backed Kamino tests should come after the Kamino fixture account list is stable, because those tests validate the real protocol account wiring rather than the generic backend response shape alone.
 
 ## 15. Decisions Before Implementation
 
