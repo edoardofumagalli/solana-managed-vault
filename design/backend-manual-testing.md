@@ -26,6 +26,11 @@ setup fixture
         -> sign/send process_withdraw
 ```
 
+The module flow is tested in two layers:
+
+- mock module on localnet, to validate the generic module interface without external protocol dependencies;
+- Kamino USDC on Surfpool, to validate the same generic backend endpoints against real cloned Klend accounts.
+
 ## Prerequisites
 
 Use localnet for this flow.
@@ -40,6 +45,21 @@ NO_DNA=1 cargo run
 ```
 
 By default the backend listens on `http://127.0.0.1:8080` and reads RPC state from `http://127.0.0.1:8899`.
+
+For the Kamino USDC flow, use Surfpool against mainnet clones instead of a plain local validator. Run it from the Anchor workspace so the generated runbook can deploy the local programs:
+
+```bash
+cd /Users/edoardoalbertofumagalli/Projects/solana/training/week-2/solana-managed-vault/anchor_managed_vault
+
+NO_DNA=1 surfpool start \
+  --network mainnet \
+  --no-tui \
+  --yes \
+  --watch \
+  --airdrop-keypair-path "$HOME/.config/solana/id.json"
+```
+
+`--watch` lets Surfpool manage workspace program deploys while it is running. If your local programs are already deployed and you are not changing them, this can be dropped, but keeping it on is the simplest setup while iterating.
 
 4. Run the script commands from the Anchor workspace:
 
@@ -71,6 +91,11 @@ Expected files for the current flow:
 .tmp/sync-module-nav-transaction.json
 .tmp/deploy-to-module-transaction.json
 .tmp/recall-from-module-transaction.json
+.tmp/kamino-register-module-transaction.json
+.tmp/kamino-sync-module-nav-transaction.json
+.tmp/kamino-deposit-transaction.json
+.tmp/kamino-deploy-to-module-transaction.json
+.tmp/kamino-recall-from-module-transaction.json
 ```
 
 `.tmp/` is ignored by git. These files are local test artifacts and should not be committed.
@@ -107,6 +132,24 @@ npm run backend:fixture:setup -- \
 
 With `--include-mock-module`, the script also initializes the local mock yield module and writes ready-to-use request templates for the module backend endpoints. This optional mode requires the `mock_yield_module` program to be deployed on the selected local cluster. It does not register the module in the vault. Registration should still be tested through `POST /transactions/modules/register` when module inspect scripts are added.
 
+Optional Kamino USDC setup:
+
+```bash
+npm run backend:fixture:setup -- \
+  --execute \
+  --setup-kamino-usdc-onchain \
+  --output .tmp/backend-fixture.json
+```
+
+With `--setup-kamino-usdc-onchain`, the script validates the cloned Kamino/Klend USDC accounts, initializes the Kamino USDC vault if needed, initializes the Kamino module state if needed, creates the module token accounts idempotently, and writes ready-to-use request templates under `.modules.kaminoUsdc`.
+
+The Kamino fixture uses:
+
+- `amounts.suggestedModuleAmount` for deploy, default `100000`;
+- `amounts.suggestedKaminoModuleRecallAmount` for recall, default `50000`.
+
+The recall amount is intentionally smaller than the deploy amount. Kamino positions are represented through collateral tokens and reserve exchange-rate math. The module NAV rounds down, while recall computes collateral to redeem by rounding up, so a full recall of the original deploy amount can fail with `InsufficientCollateral` after normal exchange-rate rounding.
+
 Useful fixture fields:
 
 ```bash
@@ -115,6 +158,8 @@ jq '.amounts' .tmp/backend-fixture.json
 jq '.modules.mockYield.requests.register' .tmp/backend-fixture.json
 jq '.modules.mockYield.remainingAccounts.deploy' .tmp/backend-fixture.json
 jq '.modules.mockYield.remainingAccounts.recall' .tmp/backend-fixture.json
+jq '.modules.kaminoUsdc.requests.deploy' .tmp/backend-fixture.json
+jq '.modules.kaminoUsdc.requests.recall' .tmp/backend-fixture.json
 ```
 
 For convenience:
@@ -505,6 +550,171 @@ npm run backend:tx:sign -- \
 
 After recall, the module token account should decrease by the recalled amount, the vault token account should increase by at least that amount, and the module cached NAV should decrease accordingly.
 
+## Kamino USDC Surfpool Flow
+
+This flow validates the same generic backend module endpoints against the real Kamino/Klend adapter. It requires Surfpool with mainnet cloned accounts and a fixture created with `--setup-kamino-usdc-onchain`.
+
+The high-level sequence is:
+
+```text
+start Surfpool mainnet clone
+    -> setup Kamino fixture
+    -> fund manager USDC on Surfpool
+    -> register Kamino module through backend
+    -> sync module NAV through backend
+    -> deposit USDC into the Kamino vault through backend
+    -> deploy part of vault liquidity into Kamino through backend
+    -> recall part of deployed liquidity through backend
+```
+
+### Kamino Step 1: Setup Fixture
+
+```bash
+npm run backend:fixture:setup -- \
+  --execute \
+  --setup-kamino-usdc-onchain \
+  --output .tmp/backend-fixture.json
+```
+
+Useful variables:
+
+```bash
+MANAGER=$(node -p 'require("./.tmp/backend-fixture.json").manager')
+KAMINO_VAULT=$(node -p 'require("./.tmp/backend-fixture.json").modules.kaminoUsdc.accounts.vault')
+USDC_MINT=$(node -p 'require("./.tmp/backend-fixture.json").modules.kaminoUsdc.reserveAccounts.liquidityMint')
+KAMINO_SHARE_MINT=$(node -p 'require("./.tmp/backend-fixture.json").modules.kaminoUsdc.accounts.shareMint')
+KAMINO_DEPLOY_AMOUNT=$(node -p 'require("./.tmp/backend-fixture.json").modules.kaminoUsdc.requests.deploy.amount')
+KAMINO_RECALL_AMOUNT=$(node -p 'require("./.tmp/backend-fixture.json").modules.kaminoUsdc.requests.recall.amount')
+```
+
+Expected defaults:
+
+```text
+KAMINO_DEPLOY_AMOUNT=100000
+KAMINO_RECALL_AMOUNT=50000
+```
+
+### Kamino Step 2: Fund Manager USDC
+
+The setup script initializes accounts, but the manager still needs local Surfpool USDC to deposit into the Kamino vault. Use Surfpool's local RPC override:
+
+```bash
+curl -sS http://127.0.0.1:8899 \
+  -H "Content-Type: application/json" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"surfnet_setTokenAccount\",\"params\":[\"$MANAGER\",\"$USDC_MINT\",{\"amount\":10000000}]}"
+```
+
+Create the manager share token account with zero balance if needed:
+
+```bash
+curl -sS http://127.0.0.1:8899 \
+  -H "Content-Type: application/json" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"surfnet_setTokenAccount\",\"params\":[\"$MANAGER\",\"$KAMINO_SHARE_MINT\",{\"amount\":0}]}"
+```
+
+### Kamino Step 3: Register Module
+
+```bash
+npm run backend:modules:register:inspect -- \
+  --fixture .tmp/backend-fixture.json \
+  --fixture-module kaminoUsdc \
+  --output .tmp/kamino-register-module-transaction.json
+
+npm run backend:tx:sign -- \
+  --input .tmp/kamino-register-module-transaction.json \
+  --send \
+  --wallet "$HOME/.config/solana/id.json"
+```
+
+Expected checks:
+
+- `summary.action` is `register_module`;
+- `summary.accounts.module_program` is the Kamino yield module program;
+- backend simulation has `ok: true`;
+- the transaction confirms.
+
+### Kamino Step 4: Sync Module NAV
+
+```bash
+npm run backend:modules:sync-nav:inspect -- \
+  --fixture .tmp/backend-fixture.json \
+  --fixture-module kaminoUsdc \
+  --output .tmp/kamino-sync-module-nav-transaction.json
+
+npm run backend:tx:sign -- \
+  --input .tmp/kamino-sync-module-nav-transaction.json \
+  --send \
+  --wallet "$HOME/.config/solana/id.json"
+```
+
+Immediately after registration, `oldCachedNav` is usually `0`. This step is still useful because it verifies the generic `sync-nav` endpoint against the Kamino module entry.
+
+### Kamino Step 5: Deposit Into Kamino Vault
+
+```bash
+npm run backend:deposit:inspect -- \
+  --vault "$KAMINO_VAULT" \
+  --user "$MANAGER" \
+  --amount 10000000 \
+  --simulate \
+  --output .tmp/kamino-deposit-transaction.json
+
+npm run backend:tx:sign -- \
+  --input .tmp/kamino-deposit-transaction.json \
+  --send \
+  --wallet "$HOME/.config/solana/id.json"
+```
+
+This is a normal vault deposit, but against the USDC-backed Kamino vault created by the fixture.
+
+### Kamino Step 6: Deploy To Kamino
+
+```bash
+npm run backend:modules:deploy:inspect -- \
+  --fixture .tmp/backend-fixture.json \
+  --fixture-module kaminoUsdc \
+  --simulate \
+  --output .tmp/kamino-deploy-to-module-transaction.json
+
+npm run backend:tx:sign -- \
+  --input .tmp/kamino-deploy-to-module-transaction.json \
+  --send \
+  --wallet "$HOME/.config/solana/id.json"
+```
+
+Expected checks:
+
+- `summary.action` is `deploy_to_module`;
+- `summary.amounts.module_underlying` matches `KAMINO_DEPLOY_AMOUNT`;
+- `summary.details.remainingAccountsCount` is `18`;
+- logs include Kamino `Deposit` and Klend `DepositReserveLiquidity`;
+- simulation and signed send both succeed.
+
+### Kamino Step 7: Recall From Kamino
+
+```bash
+npm run backend:modules:recall:inspect -- \
+  --fixture .tmp/backend-fixture.json \
+  --fixture-module kaminoUsdc \
+  --simulate \
+  --output .tmp/kamino-recall-from-module-transaction.json
+
+npm run backend:tx:sign -- \
+  --input .tmp/kamino-recall-from-module-transaction.json \
+  --send \
+  --wallet "$HOME/.config/solana/id.json"
+```
+
+Expected checks:
+
+- `summary.action` is `recall_from_module`;
+- `summary.amounts.module_underlying` matches `KAMINO_RECALL_AMOUNT`;
+- `summary.details.remainingAccountsCount` is `19`;
+- logs include Kamino `Withdraw` and Klend `RedeemReserveCollateral`;
+- simulation and signed send both succeed.
+
+If you override the recall amount, keep it below the current Kamino module NAV. A full recall of the exact deploy amount can fail with `InsufficientCollateral` because the deployed collateral position may be worth slightly less than the original raw underlying amount after integer rounding.
+
 ## Interpreting Saved Transaction Builds
 
 Every inspect script writes a JSON file with schema:
@@ -533,6 +743,9 @@ jq '.response.summary.details.ticketIndex' .tmp/process-withdraw-transaction.jso
 jq '.response.summary.details.oldCachedNav' .tmp/sync-module-nav-transaction.json
 jq '.response.summary.details.remainingAccountsCount' .tmp/deploy-to-module-transaction.json
 jq '.response.summary.details.remainingAccountsCount' .tmp/recall-from-module-transaction.json
+jq '.response.summary' .tmp/kamino-deploy-to-module-transaction.json
+jq '.response.summary' .tmp/kamino-recall-from-module-transaction.json
+jq '.response.simulation.unitsConsumed' .tmp/kamino-recall-from-module-transaction.json
 ```
 
 ## Blockhash Expiry
@@ -546,7 +759,8 @@ If `sign_backend_transaction.js` says the blockhash is too close to expiry, rebu
 Covered:
 
 - fixture setup for backend endpoint testing;
-- optional mock module fixture data for future module endpoint testing;
+- optional mock module fixture data for module endpoint testing;
+- Surfpool/Kamino USDC fixture data and manual backend flow;
 - `POST /transactions/deposit`;
 - `POST /transactions/request-withdraw`;
 - `POST /transactions/cancel-withdraw`;
@@ -562,5 +776,5 @@ Covered:
 Not covered yet:
 
 - manager endpoints;
-- Kamino-specific backend flows;
+- automated Kamino amount discovery or reserve discovery;
 - automated assertions around the manual script flow.
