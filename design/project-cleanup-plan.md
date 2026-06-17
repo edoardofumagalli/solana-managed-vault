@@ -245,7 +245,6 @@ first cleanup should extract shared helpers rather than remove scripts.
 | `anchor_managed_vault/scripts/inspect_sync_module_nav_transaction.js` | `keep-operational`, `refactor-candidate` | Active inspect script. Supports fixture module modes. |
 | `anchor_managed_vault/scripts/inspect_deploy_to_module_transaction.js` | `keep-operational`, `refactor-candidate` | Active inspect script. Handles ordered `remainingAccounts`. |
 | `anchor_managed_vault/scripts/inspect_recall_from_module_transaction.js` | `keep-operational`, `refactor-candidate` | Active inspect script. Handles ordered `remainingAccounts`. |
-| `anchor_managed_vault/scripts/playground.ts` | `needs-decision`, `archive-candidate` | Original direct on-chain playground. Backend fixture replaced it for backend testing. Decide whether to keep as demo, rename to `legacy_playground.ts`, or remove package/Anchor script references after replacement docs exist. |
 
 Script cleanup order:
 
@@ -259,7 +258,15 @@ Script cleanup order:
 2. Update one inspect script first as a pattern.
 3. Convert the remaining inspect scripts incrementally.
 4. Split `setup_backend_fixture.ts` only after inspect helper extraction.
-5. Decide the fate of `playground.ts`.
+5. Remove the legacy `playground.ts` script after fixture and manual testing
+   flows replace it.
+
+Completed Phase C decisions:
+
+- `anchor_managed_vault/scripts/playground.ts` was removed because the backend
+  fixture setup script, manual inspect/sign scripts, and Anchor tests now cover
+  its old direct local flow. The `playground` entries were also removed from
+  `anchor_managed_vault/package.json` and `anchor_managed_vault/Anchor.toml`.
 
 Verification for script cleanup:
 
@@ -299,8 +306,8 @@ Runbook cleanup order:
 | `.gitignore` | `keep-operational` | Root ignore file. Already ignores `.tmp`, backend target, Anchor target, Surfpool local outputs, and nested test ledgers. |
 | `anchor_managed_vault/.gitignore` | `keep-operational` | Anchor workspace ignore file. Keep aligned with root ignore. |
 | `anchor_managed_vault/.prettierignore` | `keep-operational` | Keep. Do not introduce `.prettierrc` unless explicitly requested. |
-| `anchor_managed_vault/package.json` | `keep-operational`, `refactor-candidate` | Scripts are useful. Later remove/rename `playground` script if playground is archived. |
-| `anchor_managed_vault/Anchor.toml` | `keep-operational` | Program IDs and default test script. Later remove/rename `playground` script if playground is archived. |
+| `anchor_managed_vault/package.json` | `keep-operational`, `refactor-candidate` | Scripts are useful. Legacy `playground` script was removed during Phase C. |
+| `anchor_managed_vault/Anchor.toml` | `keep-operational` | Program IDs and default test script. Legacy `playground` script was removed during Phase C. |
 | `anchor_managed_vault/Cargo.toml`, `anchor_managed_vault/Cargo.lock` | `keep-operational` | Anchor Rust workspace metadata. Keep. |
 | `anchor_managed_vault/package-lock.json` | `keep-operational` | Node lockfile. Keep. |
 | `anchor_managed_vault/rust-toolchain.toml` | `keep-operational` | Toolchain pin. Keep. |
@@ -372,14 +379,14 @@ Goal: reduce duplication in manual backend scripts.
 2. Convert one inspect script as reference.
 3. Convert the remaining inspect scripts in small commits.
 4. Split `setup_backend_fixture.ts` after inspect helpers are stable.
-5. Decide `playground.ts`.
+5. Remove `playground.ts` after fixture/manual testing replacement is complete.
 
 Suggested commits:
 
 - `chore: add shared backend inspect script helpers`
 - `chore: migrate backend inspect scripts to shared helpers`
 - `chore: split backend fixture setup helpers`
-- `chore: archive legacy playground script`
+- `chore: remove legacy playground script`
 
 ### Phase D: Test Documentation
 
@@ -413,7 +420,6 @@ Suggested commits:
 
 | Decision | Options | Recommended Default |
 | --- | --- | --- |
-| What to do with `playground.ts`? | Keep demo, archive, remove from scripts. | Archive after fixture/testing docs fully replace it. |
 | Where should historical docs live? | Root, `design/archive/`, `docs/archive/`. | Decided in Phase A: `design/archive/`. |
 | Should manual testing docs be split? | Keep single file, split by flow. | Split once another flow is added or current file becomes hard to scan. |
 | Should manager/admin inspect scripts be added? | Add now, defer. | Defer until script helper cleanup is done. |

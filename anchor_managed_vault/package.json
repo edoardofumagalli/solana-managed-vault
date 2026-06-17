@@ -1,7 +1,6 @@
 {
   "license": "ISC",
   "scripts": {
-    "playground": "npx ts-node scripts/playground.ts",
     "backend:fixture:setup": "npx ts-node scripts/setup_backend_fixture.ts",
     "backend:deposit:inspect": "node scripts/inspect_deposit_transaction.js",
     "backend:request-withdraw:inspect": "node scripts/inspect_request_withdraw_transaction.js",

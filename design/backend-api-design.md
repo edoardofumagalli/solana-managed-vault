@@ -473,7 +473,7 @@ Before adding more endpoint families, extract the repeated transaction-building 
 
 Keep local backend testing modular instead of building one large end-to-end script:
 
-1. Add a dedicated backend fixture setup script that prepares localnet state and writes a fixture JSON file. This replaces using the broader playground for backend endpoint testing.
+1. Add a dedicated backend fixture setup script that prepares localnet state and writes a fixture JSON file. This replaces the earlier ad-hoc direct on-chain setup flow for backend endpoint testing.
 2. Keep one inspect script per backend endpoint. Each script calls the endpoint, prints the backend summary, decodes the returned `VersionedTransaction`, and can save the raw build response with `--output`.
 3. Store local script outputs under `.tmp/`, which is ignored by git.
 4. Use one separate signing script for saved backend transaction builds. By default it only reviews and validates the saved response; explicit flags are required to sign or send.

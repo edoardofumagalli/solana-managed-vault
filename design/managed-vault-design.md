@@ -390,7 +390,7 @@ The mock module emits initialization, NAV calculation, deposit, and withdraw eve
 
 The Kamino module emits deposit and withdraw events for token-mode capital movement.
 
-These events do not replace account reads, but they make it easier to build indexers, dashboards, playground scripts, and debugging workflows.
+These events do not replace account reads, but they make it easier to build indexers, dashboards, local debugging scripts, and monitoring workflows.
 
 ## 14. Testing Strategy
 
@@ -459,4 +459,3 @@ Strategy architecture:
 - Support multiple modules per vault in a production-grade allocation model.
 - Add a backend or cranker service to sync NAV, recall capital, and surface health checks.
 - Define operational policy for mixing off-chain float and on-chain module positions.
-
