@@ -1,8 +1,15 @@
 # Managed Vault Implementation Strategy
 
+> Archive note: this is a historical implementation plan from the initial
+> Anchor program phase. Current implementation guidance lives in
+> `../managed-vault-design.md`, `../backend-api-design.md`, and
+> `../backend-roadmap.md`.
+
 ## Goal
 
-Use this document as the execution plan for building the Anchor managed vault program. The design choices are already documented in `design/managed-vault-design-decisions.md`; this file focuses on implementation order and test strategy.
+This document captured the original execution plan for building the Anchor
+managed vault program. The current design choices are documented in
+`../managed-vault-design.md`; this file is kept only as historical context.
 
 ## 1. Freeze Practical Choices
 
