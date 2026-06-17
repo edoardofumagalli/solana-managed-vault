@@ -5,7 +5,6 @@ import {
     Connection,
     Keypair,
     PublicKey,
-    SYSVAR_INSTRUCTIONS_PUBKEY,
     SystemProgram,
 } from "@solana/web3.js";
 import {
@@ -34,170 +33,25 @@ import {
     MODULE_TYPE_TOKEN,
 } from "./lib/backend_fixture/constants";
 import { createProvider, writeJson } from "./lib/backend_fixture/io";
+import { initializeMockYieldModuleFixture } from "./lib/backend_fixture/mock_yield";
 import {
     deriveKaminoUsdcAccounts,
-    deriveMockModuleAuthorityPda,
-    deriveMockModuleStatePda,
-    deriveModuleEntryPda,
     deriveShareMintPda,
     deriveUserVaultPositionPda,
     deriveVaultPda,
 } from "./lib/backend_fixture/pdas";
+import {
+    kaminoDeployRemainingAccounts,
+    kaminoRecallRemainingAccounts,
+} from "./lib/backend_fixture/remaining_accounts";
 import {
     FixtureJson,
     KaminoUsdcDerivedAccounts,
     KaminoUsdcModuleFixtureJson,
     KaminoUsdcSetupTransactionsJson,
     MockYieldModuleFixtureJson,
-    RemainingAccountJson,
     SetupArgs,
 } from "./lib/backend_fixture/types";
-
-function remainingAccount(
-    pubkey: PublicKey,
-    isWritable: boolean,
-    role: string
-): RemainingAccountJson {
-    return {
-        pubkey: pubkey.toBase58(),
-        isWritable,
-        isSigner: false,
-        role,
-    };
-}
-
-function mockDeployRemainingAccounts(
-    moduleState: PublicKey,
-    moduleTokenAccount: PublicKey
-): RemainingAccountJson[] {
-    return [
-        remainingAccount(moduleState, true, "mock_module_state"),
-        remainingAccount(moduleTokenAccount, true, "module_token_account"),
-    ];
-}
-
-function mockRecallRemainingAccounts(params: {
-    moduleState: PublicKey;
-    mockModuleAuthority: PublicKey;
-    underlyingMint: PublicKey;
-    moduleTokenAccount: PublicKey;
-    vaultTokenAccount: PublicKey;
-}): RemainingAccountJson[] {
-    return [
-        remainingAccount(params.moduleState, true, "mock_module_state"),
-        remainingAccount(
-            params.mockModuleAuthority,
-            false,
-            "mock_module_authority"
-        ),
-        remainingAccount(params.underlyingMint, false, "underlying_mint"),
-        remainingAccount(
-            params.moduleTokenAccount,
-            true,
-            "module_token_account"
-        ),
-        remainingAccount(params.vaultTokenAccount, true, "vault_token_account"),
-        remainingAccount(TOKEN_PROGRAM_ID, false, "token_program"),
-    ];
-}
-
-function kaminoDeployRemainingAccounts(params: {
-    moduleConfig: PublicKey;
-    moduleState: PublicKey;
-    moduleUnderlyingTokenAccount: PublicKey;
-    vaultCollateralAccount: PublicKey;
-}): RemainingAccountJson[] {
-    return [
-        remainingAccount(params.moduleConfig, false, "module_config"),
-        remainingAccount(params.moduleState, true, "kamino_module_state"),
-        remainingAccount(KAMINO_USDC.reserve, true, "reserve"),
-        remainingAccount(KAMINO_USDC.lendingMarket, false, "lending_market"),
-        remainingAccount(
-            KAMINO_USDC.lendingMarketAuthority,
-            false,
-            "lending_market_authority"
-        ),
-        remainingAccount(KLEND_PROGRAM_ID, false, "pyth_oracle"),
-        remainingAccount(KLEND_PROGRAM_ID, false, "switchboard_price_oracle"),
-        remainingAccount(KLEND_PROGRAM_ID, false, "switchboard_twap_oracle"),
-        remainingAccount(KAMINO_USDC.scopePrices, false, "scope_prices"),
-        remainingAccount(KAMINO_USDC.liquidityMint, false, "liquidity_mint"),
-        remainingAccount(
-            KAMINO_USDC.liquiditySupplyVault,
-            true,
-            "liquidity_supply_vault"
-        ),
-        remainingAccount(KAMINO_USDC.collateralMint, true, "collateral_mint"),
-        remainingAccount(
-            params.moduleUnderlyingTokenAccount,
-            true,
-            "module_underlying_token_account"
-        ),
-        remainingAccount(
-            params.vaultCollateralAccount,
-            true,
-            "vault_collateral_account"
-        ),
-        remainingAccount(TOKEN_PROGRAM_ID, false, "token_program"),
-        remainingAccount(TOKEN_PROGRAM_ID, false, "liquidity_token_program"),
-        remainingAccount(KLEND_PROGRAM_ID, false, "klend_program"),
-        remainingAccount(
-            SYSVAR_INSTRUCTIONS_PUBKEY,
-            false,
-            "instruction_sysvar"
-        ),
-    ];
-}
-
-function kaminoRecallRemainingAccounts(params: {
-    moduleConfig: PublicKey;
-    moduleState: PublicKey;
-    moduleUnderlyingTokenAccount: PublicKey;
-    vaultCollateralAccount: PublicKey;
-    vaultTokenAccount: PublicKey;
-}): RemainingAccountJson[] {
-    return [
-        remainingAccount(params.moduleConfig, false, "module_config"),
-        remainingAccount(params.moduleState, true, "kamino_module_state"),
-        remainingAccount(KAMINO_USDC.lendingMarket, false, "lending_market"),
-        remainingAccount(KAMINO_USDC.reserve, true, "reserve"),
-        remainingAccount(
-            KAMINO_USDC.lendingMarketAuthority,
-            false,
-            "lending_market_authority"
-        ),
-        remainingAccount(KLEND_PROGRAM_ID, false, "pyth_oracle"),
-        remainingAccount(KLEND_PROGRAM_ID, false, "switchboard_price_oracle"),
-        remainingAccount(KLEND_PROGRAM_ID, false, "switchboard_twap_oracle"),
-        remainingAccount(KAMINO_USDC.scopePrices, false, "scope_prices"),
-        remainingAccount(KAMINO_USDC.liquidityMint, false, "liquidity_mint"),
-        remainingAccount(KAMINO_USDC.collateralMint, true, "collateral_mint"),
-        remainingAccount(
-            KAMINO_USDC.liquiditySupplyVault,
-            true,
-            "liquidity_supply_vault"
-        ),
-        remainingAccount(
-            params.vaultCollateralAccount,
-            true,
-            "vault_collateral_account"
-        ),
-        remainingAccount(
-            params.moduleUnderlyingTokenAccount,
-            true,
-            "module_underlying_token_account"
-        ),
-        remainingAccount(params.vaultTokenAccount, true, "vault_token_account"),
-        remainingAccount(TOKEN_PROGRAM_ID, false, "token_program"),
-        remainingAccount(TOKEN_PROGRAM_ID, false, "liquidity_token_program"),
-        remainingAccount(KLEND_PROGRAM_ID, false, "klend_program"),
-        remainingAccount(
-            SYSVAR_INSTRUCTIONS_PUBKEY,
-            false,
-            "instruction_sysvar"
-        ),
-    ];
-}
 
 function buildKaminoUsdcModuleFixture(params: {
     vaultProgramId: PublicKey;
@@ -852,107 +706,16 @@ async function main(): Promise<void> {
 
     let mockYieldModuleFixture: MockYieldModuleFixtureJson | undefined;
     if (args.includeMockModule) {
-        console.log("Initializing mock yield module...");
-
-        const [mockModuleState] = deriveMockModuleStatePda(
+        mockYieldModuleFixture = await initializeMockYieldModuleFixture({
+            program,
+            mockYieldModuleProgram,
+            manager,
             vault,
-            mockYieldModuleProgram.programId
-        );
-        const [mockModuleAuthority] = deriveMockModuleAuthorityPda(
-            mockModuleState,
-            mockYieldModuleProgram.programId
-        );
-        const moduleTokenAccount = getAssociatedTokenAddressSync(
             underlyingMint,
-            mockModuleAuthority,
-            true,
-            TOKEN_PROGRAM_ID
-        );
-        const [moduleEntry] = deriveModuleEntryPda(
-            program.programId,
-            vault,
-            mockYieldModuleProgram.programId,
-            args.mockModulePolicySeed
-        );
-
-        const initializeMockModule = await mockYieldModuleProgram.methods
-            .initialize(program.programId)
-            .accountsPartial({
-                payer: manager,
-                vault,
-                underlyingMint,
-                mockModuleState,
-                mockModuleAuthority,
-                moduleTokenAccount,
-                tokenProgram: TOKEN_PROGRAM_ID,
-                associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-                systemProgram: SystemProgram.programId,
-            })
-            .rpc();
-
-        const deployRemainingAccounts = mockDeployRemainingAccounts(
-            mockModuleState,
-            moduleTokenAccount
-        );
-        const recallRemainingAccounts = mockRecallRemainingAccounts({
-            moduleState: mockModuleState,
-            mockModuleAuthority,
-            underlyingMint,
-            moduleTokenAccount,
             vaultTokenAccount,
-        });
-
-        mockYieldModuleFixture = {
-            programId: mockYieldModuleProgram.programId.toBase58(),
+            moduleAmount: args.moduleAmount,
             policySeed: args.mockModulePolicySeed,
-            accounts: {
-                moduleEntry: moduleEntry.toBase58(),
-                moduleProgram: mockYieldModuleProgram.programId.toBase58(),
-                moduleState: mockModuleState.toBase58(),
-                mockModuleAuthority: mockModuleAuthority.toBase58(),
-                moduleUnderlyingTokenAccount: moduleTokenAccount.toBase58(),
-            },
-            remainingAccounts: {
-                deploy: deployRemainingAccounts,
-                recall: recallRemainingAccounts,
-            },
-            requests: {
-                register: {
-                    vault: vault.toBase58(),
-                    manager: manager.toBase58(),
-                    moduleProgram: mockYieldModuleProgram.programId.toBase58(),
-                    moduleState: mockModuleState.toBase58(),
-                    moduleUnderlyingTokenAccount: moduleTokenAccount.toBase58(),
-                    policySeed: args.mockModulePolicySeed,
-                    simulate: true,
-                },
-                syncNav: {
-                    vault: vault.toBase58(),
-                    moduleEntry: moduleEntry.toBase58(),
-                    feePayer: manager.toBase58(),
-                    simulate: true,
-                },
-                deploy: {
-                    vault: vault.toBase58(),
-                    manager: manager.toBase58(),
-                    moduleEntry: moduleEntry.toBase58(),
-                    amount: args.moduleAmount,
-                    remainingAccounts: deployRemainingAccounts,
-                    simulate: true,
-                },
-                recall: {
-                    vault: vault.toBase58(),
-                    manager: manager.toBase58(),
-                    moduleEntry: moduleEntry.toBase58(),
-                    amount: args.moduleAmount,
-                    remainingAccounts: recallRemainingAccounts,
-                    simulate: true,
-                },
-            },
-            transactions: {
-                initializeMockModule,
-            },
-        };
+        });
     }
 
     let kaminoUsdcModuleFixture: KaminoUsdcModuleFixtureJson | undefined;
