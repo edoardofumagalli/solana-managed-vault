@@ -11,6 +11,7 @@ Use it together with:
 - [backend-api-design.md](backend-api-design.md)
 - [backend-roadmap.md](backend-roadmap.md)
 - [backend-manual-testing.md](backend-manual-testing.md)
+- [testing/README.md](testing/README.md)
 - [project-cleanup-plan.md](project-cleanup-plan.md)
 
 The immediate cleanup rule is simple: do not delete a test until this matrix
@@ -233,7 +234,4 @@ Next review pass:
 
 1. Phase D overlap review is complete for the current `refactor-candidate`
    integration tests.
-2. Decide whether to defer or perform the optional
-   `backend-manual-testing.md` split.
-3. If the manual testing split is deferred, move to Phase E backend route/API
-   refactor planning.
+2. Move to Phase E backend route/API refactor planning.

@@ -60,7 +60,8 @@ These files should remain the primary references while cleanup is in progress:
 | `design/managed-vault-design.md` | `keep-source` | Current on-chain model: share accounting, async withdraws, manager float, shutdown, modules, Kamino. |
 | `design/backend-api-design.md` | `keep-source` | Current backend API contract, response shape, endpoint inputs, module `remainingAccounts`, implementation phases. |
 | `design/backend-roadmap.md` | `keep-source` | Current practical roadmap after backend and mentor review. Good reference for Kamino and future compute/read phases. |
-| `design/backend-manual-testing.md` | `keep-operational`, `refactor-candidate` | Current manual test runbook. It is useful but long; later split by user flow, mock modules, and Kamino Surfpool. |
+| `design/backend-manual-testing.md` | `keep-operational` | Stable manual testing entrypoint. Detailed runbooks now live under `design/testing/`. |
+| `design/testing/*.md` | `keep-operational` | Split manual testing runbooks for common setup, user flow, mock modules, Kamino Surfpool, and transaction build references. |
 | `design/anchor-test-coverage-matrix.md` | `keep-source` | Current inventory of Anchor test coverage. Use before deleting or refactoring tests. |
 | `design/diagrams/*.puml` | `keep-source` | Sequence diagrams for module deploy/recall. Keep linked from design docs. |
 | `design/archive/README.md` | `keep-historical` | Archive index for historical documents. |
@@ -90,7 +91,12 @@ These files should remain the primary references while cleanup is in progress:
 | `design/managed-vault-design.md` | `keep-source` | Keep as canonical on-chain design. Consider adding links to historical docs after archive structure exists. |
 | `design/backend-api-design.md` | `keep-source`, `refactor-candidate` | Keep as canonical backend contract. Later separate completed phases from future phases if it keeps growing. |
 | `design/backend-roadmap.md` | `keep-source` | Keep as step-by-step roadmap. Later update after cleanup and compute budget work. |
-| `design/backend-manual-testing.md` | `keep-operational`, `refactor-candidate` | Keep now. Later split into `backend-manual-testing.md`, `backend-kamino-testing.md`, and maybe `backend-script-reference.md`. |
+| `design/backend-manual-testing.md` | `keep-operational` | Keep as a short compatibility entrypoint for existing links. |
+| `design/testing/README.md` | `keep-operational` | Manual testing documentation map and common prerequisites. |
+| `design/testing/backend-user-flow-testing.md` | `keep-operational` | Local deposit and async withdraw manual runbook. |
+| `design/testing/backend-module-testing.md` | `keep-operational` | Local mock module manual runbook. |
+| `design/testing/backend-kamino-surfpool-testing.md` | `keep-operational` | Kamino USDC Surfpool manual runbook. |
+| `design/testing/backend-transaction-build-reference.md` | `keep-operational` | Saved transaction build and blockhash reference. |
 | `design/anchor-test-coverage-matrix.md` | `keep-source` | Keep as the test cleanup source of truth. Update whenever test files are added, split, removed, or reclassified. |
 | `design/project-cleanup-plan.md` | `keep-source` | This file. Update whenever cleanup decisions change. |
 
@@ -358,7 +364,8 @@ Archived files:
 
 Remaining optional follow-up:
 
-1. Split `backend-manual-testing.md` only if it keeps growing.
+1. Keep the split testing docs aligned as new endpoint families get manual
+   scripts.
 
 Suggested commits:
 
@@ -434,7 +441,7 @@ Suggested commits:
 | Decision | Options | Recommended Default |
 | --- | --- | --- |
 | Where should historical docs live? | Root, `design/archive/`, `docs/archive/`. | Decided in Phase A: `design/archive/`. |
-| Should manual testing docs be split? | Keep single file, split by flow. | Split once another flow is added or current file becomes hard to scan. |
+| Should manual testing docs be split? | Keep single file, split by flow. | Decided: split into `design/testing/` and keep `design/backend-manual-testing.md` as the entrypoint. |
 | Should manager/admin inspect scripts be added? | Add now, defer. | Defer until script helper cleanup is done. |
 | Should backend DTOs be split now? | Split now, wait. | Wait until route helper cleanup starts. |
 | Should local generated ledgers be removed now? | Remove ignored local files, keep. | Remove after explicit approval because they are generated and misplaced. |
@@ -450,17 +457,16 @@ Use the smallest verification that matches the cleanup area:
 | Anchor program code | `cd anchor_managed_vault && NO_DNA=1 anchor build && NO_DNA=1 anchor test` |
 | Anchor TypeScript tests | `cd anchor_managed_vault && npm run lint && NO_DNA=1 anchor test` |
 | Manual backend scripts | `cd anchor_managed_vault && npm run lint` plus relevant `--help` or inspect flow |
-| Kamino/Surfpool routing | Surfpool mainnet clone plus Kamino manual flow from `backend-manual-testing.md` |
+| Kamino/Surfpool routing | Surfpool mainnet clone plus Kamino manual flow from `design/testing/backend-kamino-surfpool-testing.md` |
 | Git ignore / generated files | `git status --short` and `git check-ignore -v <path>` |
 
 ## Immediate Next Step
 
 Phase D overlap review is complete for the current `refactor-candidate`
-integration tests.
+integration tests, and the manual backend testing runbook has been split into
+`design/testing/`.
 
-1. Decide whether to defer or perform the optional
-   `backend-manual-testing.md` split.
-2. If deferred, proceed to Phase E backend refactor planning:
-   route helper extraction, route split, then API DTO split.
-3. Keep the Anchor test files unchanged unless a future matrix update names
+1. Proceed to Phase E backend refactor planning: route helper extraction, route
+   split, then API DTO split.
+2. Keep the Anchor test files unchanged unless a future matrix update names
    explicit replacement coverage.

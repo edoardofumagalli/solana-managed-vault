@@ -9,7 +9,7 @@ It is not a replacement for:
 
 - [backend-api-design.md](backend-api-design.md), which defines the API shape;
 - [managed-vault-design.md](managed-vault-design.md), which defines the on-chain model;
-- [backend-manual-testing.md](backend-manual-testing.md), which explains how to run local manual checks.
+- [backend-manual-testing.md](backend-manual-testing.md), which links to the local manual testing runbooks.
 
 Use this file as the step-by-step reference for deciding what to build next.
 

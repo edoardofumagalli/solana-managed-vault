@@ -480,7 +480,7 @@ Keep local backend testing modular instead of building one large end-to-end scri
 5. Before signing, the script must verify the saved response schema, required signer, fee payer, transaction blockhash, and `lastValidBlockHeight`.
 6. Before sending, the script must simulate the signed transaction and abort if simulation fails.
 7. If the saved blockhash is close to expiry, rebuild the transaction by rerunning the relevant inspect script instead of replacing the blockhash locally.
-8. Keep the runnable manual workflow documented in [`backend-manual-testing.md`](backend-manual-testing.md) and extend it as each new endpoint family is added.
+8. Keep the runnable manual workflow documented via [`backend-manual-testing.md`](backend-manual-testing.md) and extend the split runbooks under [`testing/README.md`](testing/README.md) as each new endpoint family is added.
 
 ### Phase 3: User Withdraw Builders
 
@@ -507,7 +507,7 @@ Build the manager/admin endpoints in a liquidity-first order. This keeps the bac
 3. Defer manager/admin manual inspect scripts until after this endpoint surface is stable:
    - do not add manager/admin inspect scripts in this phase;
    - keep the current manual scripts focused on the deposit and user-withdraw flow;
-   - later extend `backend-manual-testing.md` and add one inspect script per manager/admin endpoint.
+   - later extend the manual testing runbooks under `design/testing/` and add one inspect script per manager/admin endpoint.
 4. Add `POST /transactions/report-float-value`:
    - request: `vault`, `manager`, `reportedFloatValue`, optional `simulate`;
    - signer and fee payer: `manager`;

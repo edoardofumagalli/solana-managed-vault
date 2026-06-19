@@ -17,7 +17,8 @@ Use these files as the current source of truth:
 | `design/managed-vault-design.md` | Canonical on-chain vault design. |
 | `design/backend-api-design.md` | Backend transaction-building API contract. |
 | `design/backend-roadmap.md` | Practical backend roadmap and Kamino account-routing plan. |
-| `design/backend-manual-testing.md` | Manual backend, mock module, and Kamino Surfpool test guide. |
+| `design/backend-manual-testing.md` | Manual backend testing entrypoint. Detailed runbooks live under `design/testing/`. |
+| `design/testing/README.md` | Manual backend testing runbook index. |
 | `design/project-cleanup-plan.md` | Repository inventory and cleanup operating plan. |
 | `design/diagrams/*.puml` | Sequence diagrams for module deploy and recall flows. |
 
