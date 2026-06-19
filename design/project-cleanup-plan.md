@@ -61,6 +61,7 @@ These files should remain the primary references while cleanup is in progress:
 | `design/backend-api-design.md` | `keep-source` | Current backend API contract, response shape, endpoint inputs, module `remainingAccounts`, implementation phases. |
 | `design/backend-roadmap.md` | `keep-source` | Current practical roadmap after backend and mentor review. Good reference for Kamino and future compute/read phases. |
 | `design/backend-manual-testing.md` | `keep-operational`, `refactor-candidate` | Current manual test runbook. It is useful but long; later split by user flow, mock modules, and Kamino Surfpool. |
+| `design/anchor-test-coverage-matrix.md` | `keep-source` | Current inventory of Anchor test coverage. Use before deleting or refactoring tests. |
 | `design/diagrams/*.puml` | `keep-source` | Sequence diagrams for module deploy/recall. Keep linked from design docs. |
 | `design/archive/README.md` | `keep-historical` | Archive index for historical documents. |
 
@@ -90,6 +91,7 @@ These files should remain the primary references while cleanup is in progress:
 | `design/backend-api-design.md` | `keep-source`, `refactor-candidate` | Keep as canonical backend contract. Later separate completed phases from future phases if it keeps growing. |
 | `design/backend-roadmap.md` | `keep-source` | Keep as step-by-step roadmap. Later update after cleanup and compute budget work. |
 | `design/backend-manual-testing.md` | `keep-operational`, `refactor-candidate` | Keep now. Later split into `backend-manual-testing.md`, `backend-kamino-testing.md`, and maybe `backend-script-reference.md`. |
+| `design/anchor-test-coverage-matrix.md` | `keep-source` | Keep as the test cleanup source of truth. Update whenever test files are added, split, removed, or reclassified. |
 | `design/project-cleanup-plan.md` | `keep-source` | This file. Update whenever cleanup decisions change. |
 
 ## Backend Inventory
@@ -186,6 +188,9 @@ routing, runbooks, or Surfpool helpers.
 
 The current tests appear useful. Do not delete tests until a test matrix marks a
 file as redundant and the replacement coverage is explicit.
+
+The detailed coverage matrix is now tracked in
+`design/anchor-test-coverage-matrix.md`.
 
 | Path | Status | Coverage |
 | --- | --- | --- |
@@ -392,7 +397,9 @@ Suggested commits:
 
 Goal: know why every test exists before deleting any.
 
-1. Add a test matrix.
+Status: first coverage matrix added in `design/anchor-test-coverage-matrix.md`.
+
+1. Add a test matrix. Completed.
 2. Mark overlap and unique coverage.
 3. Only then decide if any test is redundant.
 
@@ -442,9 +449,11 @@ Use the smallest verification that matches the cleanup area:
 
 ## Immediate Next Step
 
-Proceed with Phase B: Generated Artifact Cleanup.
+Proceed with the Phase D overlap review.
 
-1. Confirm generated local paths.
-2. Remove misplaced local `test-ledger` directories only after explicit
-   approval.
-3. Re-run `git status --short` and `git check-ignore -v` on generated paths.
+1. Review the files marked `refactor-candidate` in
+   `design/anchor-test-coverage-matrix.md`.
+2. For each large integration file, document which assertions are unique and
+   which are duplicated by focused tests.
+3. Only after that review, decide whether to split, keep as-is, or simplify any
+   test file.
