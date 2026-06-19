@@ -81,7 +81,7 @@ intentionally outside the default local test script.
 | --- | --- | --- | --- | --- |
 | `tests/local/manager/manager_deposit.ts` | focused | Permissionless float return, zero amount rejection, excess returned funds becoming vault assets, wrong mint rejection, non-canonical destination rejection. | Complements manager withdraw tests by covering float repayment into vault custody. | `keep-focused`, `no-delete` |
 | `tests/local/manager/manager_withdraw.ts` | focused | Manager withdraw request creation, delayed execution, account close on execution, early execution rejection, zero amount rejection, float cap rejection, unauthorized manager rejection, liquidity rejection, shutdown execution blocking. | Timelock waiting appears in helpers; instruction behavior is unique here. | `keep-focused`, `no-delete` |
-| `tests/local/manager/report_float_value.ts` | focused / integration | Manager reports higher/lower/zero float value, non-manager rejection, reporting during shutdown, reported NAV affects withdrawal processing, report can push vault above float cap, overflow rejection. | Some cross-flow behavior overlaps with process withdraw, but this file owns off-chain NAV reporting effects. Large but useful. | `keep-focused`, `refactor-candidate` |
+| `tests/local/manager/report_float_value.ts` | focused / integration | Manager reports higher/lower/zero float value, non-manager rejection, reporting during shutdown, reported NAV affects withdrawal processing, report can push vault above float cap, overflow rejection. | Overlap reviewed below. This file owns manual off-chain NAV reporting effects. | `keep-focused`, `refactor-candidate`, `no-delete` |
 | `tests/local/manager/manager_update.ts` | focused / integration | Manager nomination, default pubkey rejection, non-manager rejection, unauthorized accept rejection, accept clears pending manager, new manager authority over timelocked manager withdrawals. | Final case crosses into manager withdraw authority and is valuable integration coverage. | `keep-focused`, `no-delete` |
 
 ## Local Module Tests
@@ -160,14 +160,37 @@ Lifecycle conclusion:
 - If the suite grows, consider renaming or splitting by invariant theme, not by
   deleting these cases.
 
-Remaining review candidates:
+### Reviewed: `tests/local/manager/report_float_value.ts`
 
-1. `tests/local/manager/report_float_value.ts`
-   - Keep because it owns NAV reporting effects.
-   - Review structure later because it is large and combines focused validation
-     with process-withdraw integration behavior.
+`report_float_value.ts` overlaps with manager withdraw setup and process-withdraw
+math, but it is the only local suite that proves manually reported off-chain NAV
+changes total assets without moving SPL tokens.
 
-2. `tests/local/modules/generic_module_dispatch.ts`
+| Report-float case | Focused overlap | Unique coverage | Decision |
+| --- | --- | --- | --- |
+| `lets the manager report a higher float value without moving tokens` | Uses manager withdrawal setup from `manager_withdraw.ts`. | Proves `float_outstanding` can increase above the amount physically withdrawn while vault token balance and manager receiver balance stay unchanged. | Keep as focused report instruction coverage. |
+| `lets the manager report a lower float value` | Uses manager withdrawal setup from `manager_withdraw.ts`. | Proves loss/downside reporting updates `float_outstanding` downward without token movement. | Keep as focused loss-reporting coverage. |
+| `allows reporting zero float value` | Related to manager deposit reducing float in `manager_deposit.ts`. | Proves a complete off-chain write-down is allowed through reporting, not only through token repayment. | Keep. This protects the NAV-loss model. |
+| `rejects reports from a non-manager` | Similar authority pattern to other manager-only instructions. | Owns authorization for `report_float_value` specifically and confirms failed reports do not mutate `float_outstanding`. | Keep as focused auth coverage. |
+| `allows reporting during emergency shutdown` | Shutdown behavior is covered in `emergency_shutdown.ts` and manager/module tests. | Proves reporting is explicitly allowed during shutdown as a protective accounting action. | Keep. This is a shutdown policy exception. |
+| `uses a higher reported float value when processing withdrawals` | `process_withdraw.ts` proves processing-time share price using direct vault-token donation. | Proves processing-time withdrawal value includes manually reported float NAV, not only liquid vault token balance. | Keep as integration coverage between NAV reporting and user exits. |
+| `uses a lower reported float value when processing withdrawals` | Same process-withdraw mechanics as above. | Proves reported off-chain losses reduce withdrawal payout and share burn accounting still stays consistent. | Keep as integration coverage for downside NAV. |
+| `does not allow new manager withdrawals when reporting pushes the vault above the float cap` | Float-cap rejection appears in `manager_withdraw.ts`; over-cap after processing appears in `process_withdraw.ts`. | Proves a report-only NAV increase can make the vault over cap and block new manager withdrawals without moving tokens. | Keep as integration coverage for cap policy after reporting. |
+| `rejects reported values that would overflow total assets` | Shares the `total_assets` helper with other accounting flows. | Owns overflow protection for `reported_float_value + vault_balance + modules_nav_total` at the report instruction boundary. | Keep as focused safety coverage. |
+
+Report-float conclusion:
+
+- Keep all nine current cases.
+- Do not delete or simplify behavior coverage in the current cleanup phase.
+- Keep the file marked as `refactor-candidate` because it is large and contains
+  local setup helpers that duplicate shared helper patterns.
+- A future refactor can extract helper plumbing or split focused report cases
+  from report-to-withdraw integration cases, but only after preserving this
+  matrix mapping.
+
+Remaining review candidate:
+
+1. `tests/local/modules/generic_module_dispatch.ts`
    - Keep because it owns vault raw-CPI module dispatch.
    - Review structure later if mock and Kamino module coverage grows.
 
@@ -177,15 +200,14 @@ Current decisions:
 
 - Keep all existing tests.
 - Keep all four `lifecycle.ts` cases after overlap review.
+- Keep all nine `report_float_value.ts` cases after overlap review.
 - Keep Surfpool real USDC flow separate from default `anchor test`.
 - Do not add manager/admin backend inspect scripts as part of test cleanup.
 - Do not remove helper files until each helper's call sites are reviewed.
 
 Next review pass:
 
-1. Review `tests/local/manager/report_float_value.ts` for focused-vs-integration
-   overlap.
-2. Review `tests/local/modules/generic_module_dispatch.ts` after the manager
-   review.
-3. Decide whether `backend-manual-testing.md` should be split into separate
+1. Review `tests/local/modules/generic_module_dispatch.ts` for mock-module,
+   registry, sync-nav, and vault dispatch overlap.
+2. Decide whether `backend-manual-testing.md` should be split into separate
    local, mock module, and Kamino Surfpool runbooks.

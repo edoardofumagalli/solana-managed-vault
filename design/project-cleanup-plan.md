@@ -400,6 +400,8 @@ Goal: know why every test exists before deleting any.
 Status: first coverage matrix added in `design/anchor-test-coverage-matrix.md`.
 The `tests/local/vault/lifecycle.ts` overlap review is complete and all four
 cases are explicitly kept.
+The `tests/local/manager/report_float_value.ts` overlap review is complete and
+all nine cases are explicitly kept.
 
 1. Add a test matrix. Completed.
 2. Mark overlap and unique coverage.
@@ -452,10 +454,11 @@ Use the smallest verification that matches the cleanup area:
 ## Immediate Next Step
 
 Continue the Phase D overlap review with
-`tests/local/manager/report_float_value.ts`.
+`tests/local/modules/generic_module_dispatch.ts`.
 
-1. Compare each report-float case with the focused manager, process-withdraw,
-   and lifecycle tests.
-2. Document which assertions are unique to off-chain NAV reporting and which
-   are broader integration checks.
+1. Compare generic module dispatch cases with `mock_yield_module.ts`,
+   `register_module.ts`, `sync_module_nav.ts`, and the module deploy/recall
+   design.
+2. Document which assertions are unique to vault raw-CPI dispatch and which are
+   covered by focused module tests.
 3. Keep or simplify only after the matrix names the replacement coverage.
