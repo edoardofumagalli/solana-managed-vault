@@ -73,7 +73,7 @@ intentionally outside the default local test script.
 | `tests/local/vault/cancel_withdraw.ts` | focused | Returns escrowed shares, closes ticket/escrow, advances queue, rejects cancelling a later ticket before FIFO head, allows next ticket after oldest cancellation, returns extra escrow shares. | FIFO behavior overlaps with process tests, but cancel-specific escrow return and close behavior is unique. | `keep-focused`, `no-delete` |
 | `tests/local/vault/process_withdraw.ts` | focused | Transfers assets, burns escrowed shares, closes accounts, advances queue, uses processing-time share price, FIFO ordering, insufficient liquidity pending behavior, manager float return after pending ticket, blocks new manager withdrawals when processing pushes float above cap. | High-value file; overlaps with lifecycle for happy path but owns liquidity and FIFO edge cases. | `keep-focused`, `no-delete` |
 | `tests/local/vault/emergency_shutdown.ts` | focused | Emergency admin activation, unauthorized activation rejection, duplicate shutdown rejection, deposit blocking after shutdown, manager withdraw request blocking after shutdown. | Shutdown behavior also appears in module recall and manager withdraw tests, but this file owns core shutdown activation and user/manager blocking. | `keep-focused`, `no-delete` |
-| `tests/local/vault/lifecycle.ts` | integration | Multi-user interleaved withdrawals, proportional claims after donation, 1-unit round trip, total-assets invariant across large deposits/float/withdrawals, deposits while above float cap. | Largest overlap with focused deposit/withdraw/manager files. Keep because it verifies cross-instruction invariants that focused tests do not fully capture. Review before adding more lifecycle cases. | `keep-integration`, `refactor-candidate`, `review-overlap` |
+| `tests/local/vault/lifecycle.ts` | integration | Multi-user interleaved withdrawals, proportional claims after donation, 1-unit round trip, total-assets invariant across large deposits/float/withdrawals, deposits while above float cap. | Overlap reviewed below. Keep because it verifies cross-instruction invariants that focused tests do not fully capture. Review before adding more lifecycle cases. | `keep-integration`, `refactor-candidate`, `no-delete` |
 
 ## Local Manager Tests
 
@@ -137,19 +137,37 @@ intentionally outside the default local test script.
 
 No test should be deleted yet.
 
-The current likely review candidates are:
+### Reviewed: `tests/local/vault/lifecycle.ts`
 
-1. `tests/local/vault/lifecycle.ts`
-   - Keep for cross-flow invariants.
-   - Review before adding new lifecycle tests, because several happy paths are
-     already covered by focused files.
+`lifecycle.ts` overlaps with the focused deposit, withdraw, and manager tests,
+but the overlap is intentional. The file is valuable because it checks
+cross-instruction accounting sequences rather than one instruction boundary at a
+time.
 
-2. `tests/local/manager/report_float_value.ts`
+| Lifecycle case | Focused overlap | Unique coverage | Decision |
+| --- | --- | --- | --- |
+| `handles multiple users with interleaved withdrawals and proportional claims` | Deposit share minting in `deposit.ts`; ticket creation in `request_withdraw.ts`; FIFO/process mechanics in `process_withdraw.ts`. | Two users deposit different amounts, a donation changes processing-time price, and both users withdraw sequentially from a changing asset/share base. This protects proportional claims across multiple users and multiple processed tickets. | Keep as integration coverage. This is the strongest lifecycle case. |
+| `round-trips a 1 unit deposit and 1 share withdrawal without value leak` | First-depositor 1:1 minting in `deposit.ts`; standard process flow in `process_withdraw.ts`. | Minimum nonzero deposit/request/process path. Verifies user shares, share supply, vault underlying balance, and `float_outstanding` all return to zero. | Keep as a small accounting smoke test for virtual asset/share edge behavior. |
+| `preserves the total_assets invariant across large deposits, float, and withdrawals` | Manager withdraw execution in `manager_withdraw.ts`; process-withdraw accounting in `process_withdraw.ts`. | Combines manager float with user withdrawal processing and checks `total_assets = vault_token_account.amount + float_outstanding + modules_nav_total` before and after a large withdrawal. | Keep. Later it could move into a clearer accounting invariants file, but it is not redundant. |
+| `allows user deposits while the vault is above the float cap` | Float cap checks in `manager_withdraw.ts`; deposit conversion in `deposit.ts`; over-cap process stress in `process_withdraw.ts`. | Proves the policy distinction that float cap restricts manager/module outflows, not user deposits. Also verifies second-depositor share conversion after previous withdrawal and outstanding float. | Keep. This protects a policy decision that focused tests do not state directly. |
+
+Lifecycle conclusion:
+
+- Keep all four current cases.
+- Do not split or delete the file in the current cleanup phase.
+- Keep the file marked as `refactor-candidate` only because it is large and
+  owns some local helper code.
+- If the suite grows, consider renaming or splitting by invariant theme, not by
+  deleting these cases.
+
+Remaining review candidates:
+
+1. `tests/local/manager/report_float_value.ts`
    - Keep because it owns NAV reporting effects.
    - Review structure later because it is large and combines focused validation
      with process-withdraw integration behavior.
 
-3. `tests/local/modules/generic_module_dispatch.ts`
+2. `tests/local/modules/generic_module_dispatch.ts`
    - Keep because it owns vault raw-CPI module dispatch.
    - Review structure later if mock and Kamino module coverage grows.
 
@@ -158,15 +176,16 @@ The current likely review candidates are:
 Current decisions:
 
 - Keep all existing tests.
+- Keep all four `lifecycle.ts` cases after overlap review.
 - Keep Surfpool real USDC flow separate from default `anchor test`.
 - Do not add manager/admin backend inspect scripts as part of test cleanup.
 - Do not remove helper files until each helper's call sites are reviewed.
 
 Next review pass:
 
-1. Mark one or two large integration files for possible internal reorganization,
-   not deletion.
-2. Compare lifecycle cases against focused tests and document which invariants
-   are unique.
+1. Review `tests/local/manager/report_float_value.ts` for focused-vs-integration
+   overlap.
+2. Review `tests/local/modules/generic_module_dispatch.ts` after the manager
+   review.
 3. Decide whether `backend-manual-testing.md` should be split into separate
    local, mock module, and Kamino Surfpool runbooks.

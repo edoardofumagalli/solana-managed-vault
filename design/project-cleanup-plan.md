@@ -398,6 +398,8 @@ Suggested commits:
 Goal: know why every test exists before deleting any.
 
 Status: first coverage matrix added in `design/anchor-test-coverage-matrix.md`.
+The `tests/local/vault/lifecycle.ts` overlap review is complete and all four
+cases are explicitly kept.
 
 1. Add a test matrix. Completed.
 2. Mark overlap and unique coverage.
@@ -449,11 +451,11 @@ Use the smallest verification that matches the cleanup area:
 
 ## Immediate Next Step
 
-Proceed with the Phase D overlap review.
+Continue the Phase D overlap review with
+`tests/local/manager/report_float_value.ts`.
 
-1. Review the files marked `refactor-candidate` in
-   `design/anchor-test-coverage-matrix.md`.
-2. For each large integration file, document which assertions are unique and
-   which are duplicated by focused tests.
-3. Only after that review, decide whether to split, keep as-is, or simplify any
-   test file.
+1. Compare each report-float case with the focused manager, process-withdraw,
+   and lifecycle tests.
+2. Document which assertions are unique to off-chain NAV reporting and which
+   are broader integration checks.
+3. Keep or simplify only after the matrix names the replacement coverage.
