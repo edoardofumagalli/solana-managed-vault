@@ -402,6 +402,8 @@ The `tests/local/vault/lifecycle.ts` overlap review is complete and all four
 cases are explicitly kept.
 The `tests/local/manager/report_float_value.ts` overlap review is complete and
 all nine cases are explicitly kept.
+The `tests/local/modules/generic_module_dispatch.ts` overlap review is complete
+and all ten cases are explicitly kept.
 
 1. Add a test matrix. Completed.
 2. Mark overlap and unique coverage.
@@ -453,12 +455,12 @@ Use the smallest verification that matches the cleanup area:
 
 ## Immediate Next Step
 
-Continue the Phase D overlap review with
-`tests/local/modules/generic_module_dispatch.ts`.
+Phase D overlap review is complete for the current `refactor-candidate`
+integration tests.
 
-1. Compare generic module dispatch cases with `mock_yield_module.ts`,
-   `register_module.ts`, `sync_module_nav.ts`, and the module deploy/recall
-   design.
-2. Document which assertions are unique to vault raw-CPI dispatch and which are
-   covered by focused module tests.
-3. Keep or simplify only after the matrix names the replacement coverage.
+1. Decide whether to defer or perform the optional
+   `backend-manual-testing.md` split.
+2. If deferred, proceed to Phase E backend refactor planning:
+   route helper extraction, route split, then API DTO split.
+3. Keep the Anchor test files unchanged unless a future matrix update names
+   explicit replacement coverage.

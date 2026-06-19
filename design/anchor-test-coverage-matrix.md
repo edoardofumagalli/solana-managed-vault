@@ -91,7 +91,7 @@ intentionally outside the default local test script.
 | `tests/local/modules/register_module.ts` | focused | Registers module policy, stores module program/state/token account/policy seed, rejects non-manager, rejects duplicate module policy, blocks registration during shutdown. | Unique registry constraints. | `keep-focused`, `no-delete` |
 | `tests/local/modules/sync_module_nav.ts` | focused | Syncs cached NAV from registered module state, replaces previous NAV rather than accumulating twice, rejects module state with wrong owner, rejects valid state for another vault, rejects module program mismatch. | Unique NAV sync and module entry validation coverage. | `keep-focused`, `no-delete` |
 | `tests/local/modules/mock_yield_module.ts` | focused harness | Initializes mock module state and token account, calculates NAV from token balance, rejects direct deposit/withdraw because only vault CPI can sign module call authority, rejects calculate_nav with wrong token account. | Local harness safety coverage. Generic dispatch tests depend conceptually on this module behaving correctly. | `keep-focused`, `no-delete` |
-| `tests/local/modules/generic_module_dispatch.ts` | integration | Vault deploys capital through generic module interface, updates NAV atomically, rejects zero amount, rejects non-manager, rejects deploy above liquidity, recalls capital and syncs reduced NAV, rejects invalid recall, allows recall during shutdown, enforces float cap on deploy. | Large and important. Overlaps with mock module behavior but owns vault-to-module CPI dispatch and accounting. | `keep-integration`, `refactor-candidate`, `no-delete` |
+| `tests/local/modules/generic_module_dispatch.ts` | integration | Vault deploys capital through generic module interface, updates NAV atomically, rejects zero amount, rejects non-manager, rejects deploy above liquidity, recalls capital and syncs reduced NAV, rejects invalid recall, allows recall during shutdown, enforces float cap on deploy. | Overlap reviewed below. This file owns vault-to-module raw CPI dispatch and accounting. | `keep-integration`, `refactor-candidate`, `no-delete` |
 | `tests/local/modules/kamino_yield_module.ts` | focused / local adapter | Initializes token-mode and obligation-mode Kamino config/state, rejects invalid module type, rejects default obligation for obligation mode, calculates zero NAV for empty token/obligation positions, registers and syncs Kamino module NAV through vault. | Does not prove real Klend CPI deploy/recall. That belongs to Surfpool real USDC flow. | `keep-focused`, `no-delete` |
 
 ## Surfpool / Real Kamino Tests
@@ -188,11 +188,34 @@ Report-float conclusion:
   from report-to-withdraw integration cases, but only after preserving this
   matrix mapping.
 
-Remaining review candidate:
+### Reviewed: `tests/local/modules/generic_module_dispatch.ts`
 
-1. `tests/local/modules/generic_module_dispatch.ts`
-   - Keep because it owns vault raw-CPI module dispatch.
-   - Review structure later if mock and Kamino module coverage grows.
+`generic_module_dispatch.ts` overlaps with mock module, registry, and NAV sync
+tests, but it is the only local suite that proves the core vault can move funds
+through the generic module interface with raw CPI and then update aggregate NAV
+atomically.
+
+| Generic dispatch case | Focused overlap | Unique coverage | Decision |
+| --- | --- | --- | --- |
+| `deploys vault capital through the generic module interface and updates NAV atomically` | Mock module deposit/NAV behavior in `mock_yield_module.ts`; registration state in `register_module.ts`; NAV replacement in `sync_module_nav.ts`. | Proves the vault transfers underlying to the registered module token account, signs the raw CPI with `module_call_authority`, reads the standard module header, and updates `ModuleEntry.cached_nav` plus `vault.modules_nav_total` in one flow. | Keep as the main deploy-dispatch integration case. |
+| `rejects zero amount` | The mock module also rejects zero deposits. | Proves the vault rejects `deploy_to_module(0)` before token transfer or CPI dispatch and leaves vault/module balances unchanged. | Keep as deploy boundary validation. |
+| `rejects a non-manager` | Manager authorization is tested in manager and registry files. | Proves risk-increasing module deployment is manager-only and fails before any vault-to-module transfer. | Keep as deploy authorization coverage. |
+| `rejects deploy amount above liquid vault balance` | Liquidity checks appear in manager-withdraw tests. | Proves deploy-specific idle liquidity enforcement before external module dispatch. | Keep as deploy liquidity coverage. |
+| `recalls module capital back into the vault and syncs reduced NAV` | Mock module withdraw behavior in `mock_yield_module.ts`; NAV sync replacement in `sync_module_nav.ts`. | Proves the vault can raw-CPI into module `withdraw`, require returned liquidity, reload vault balance, and atomically reduce module/vault NAV. | Keep as the main recall-dispatch integration case. |
+| `rejects recall with zero amount` | The mock module also rejects zero withdraws. | Proves the vault rejects `recall_from_module(0)` at its own boundary before relying on module behavior. | Keep as recall boundary validation. |
+| `rejects recall from a non-manager` | Manager authorization is tested elsewhere. | Proves recall remains manager-only even though recall is allowed as a protective unwind action during shutdown. | Keep as recall authorization coverage. |
+| `rejects recall above module liquidity` | Mock module withdraw rejects insufficient module liquidity. | Proves an external module liquidity failure through raw CPI does not change vault or module token balances. | Keep as recall error-path integration coverage. |
+| `allows recall during emergency shutdown` | Shutdown behavior is covered in vault, manager, and registry tests. | Proves the shutdown policy exception: new deploys stop, but recall can still dispatch to unwind module exposure and return liquidity. | Keep as module shutdown policy coverage. |
+| `rejects deploy amount above the configured float cap` | Float-cap rejection appears in manager-withdraw and report-float/process tests. | Proves module NAV counts as deployed value and `deploy_to_module` enforces the cap before transferring funds or calling the module. | Keep as module cap policy coverage. |
+
+Generic dispatch conclusion:
+
+- Keep all ten current cases.
+- Do not delete or simplify behavior coverage in the current cleanup phase.
+- Keep the file marked as `refactor-candidate` because it is large and owns
+  local setup helpers that duplicate shared module helper patterns.
+- A future refactor can split deploy and recall cases or move setup helpers into
+  `tests/helpers/modules.ts`, but only after preserving this matrix mapping.
 
 ## Cleanup Decisions
 
@@ -201,13 +224,16 @@ Current decisions:
 - Keep all existing tests.
 - Keep all four `lifecycle.ts` cases after overlap review.
 - Keep all nine `report_float_value.ts` cases after overlap review.
+- Keep all ten `generic_module_dispatch.ts` cases after overlap review.
 - Keep Surfpool real USDC flow separate from default `anchor test`.
 - Do not add manager/admin backend inspect scripts as part of test cleanup.
 - Do not remove helper files until each helper's call sites are reviewed.
 
 Next review pass:
 
-1. Review `tests/local/modules/generic_module_dispatch.ts` for mock-module,
-   registry, sync-nav, and vault dispatch overlap.
-2. Decide whether `backend-manual-testing.md` should be split into separate
-   local, mock module, and Kamino Surfpool runbooks.
+1. Phase D overlap review is complete for the current `refactor-candidate`
+   integration tests.
+2. Decide whether to defer or perform the optional
+   `backend-manual-testing.md` split.
+3. If the manual testing split is deferred, move to Phase E backend route/API
+   refactor planning.
