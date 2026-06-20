@@ -15,7 +15,7 @@ pub const ACTOR_ROLE_PENDING_MANAGER: &str = "pending_manager";
 
 pub fn parse_pubkey(field: &str, value: &str) -> Result<Pubkey, ApiError> {
     Pubkey::from_str(value).map_err(|_| {
-        ApiError::bad_request(format!(
+        ApiError::invalid_pubkey(format!(
             "{field} must be a valid Solana public key, received: {value}"
         ))
     })
@@ -27,7 +27,7 @@ pub fn parse_optional_pubkey(field: &str, value: Option<&str>) -> Result<Option<
 
 pub fn parse_u64(field: &str, value: &str) -> Result<u64, ApiError> {
     value.parse::<u64>().map_err(|_| {
-        ApiError::bad_request(format!(
+        ApiError::invalid_integer(format!(
             "{field} must be a u64 integer string, received: {value}"
         ))
     })
@@ -35,13 +35,13 @@ pub fn parse_u64(field: &str, value: &str) -> Result<u64, ApiError> {
 
 pub fn parse_positive_u64(field: &str, value: &str) -> Result<u64, ApiError> {
     let amount = value.parse::<u64>().map_err(|_| {
-        ApiError::bad_request(format!(
+        ApiError::invalid_amount(format!(
             "{field} must be a positive u64 integer string, received: {value}"
         ))
     })?;
 
     if amount == 0 {
-        return Err(ApiError::bad_request(format!(
+        return Err(ApiError::invalid_amount(format!(
             "{field} must be greater than zero"
         )));
     }

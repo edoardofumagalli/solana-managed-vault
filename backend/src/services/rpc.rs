@@ -13,19 +13,21 @@ pub fn create_rpc_client(config: &AppConfig) -> RpcClient {
 }
 
 pub fn fetch_vault(rpc_client: &RpcClient, vault: &Pubkey) -> Result<Vault, ApiError> {
-    let account = rpc_client
-        .get_account(vault)
-        .map_err(|error| ApiError::not_found(format!("vault account not found: {error}")))?;
+    let account = rpc_client.get_account(vault).map_err(|error| {
+        ApiError::account_not_found(format!("vault account not found: {error}"))
+    })?;
 
     if account.owner != VAULT_PROGRAM_ID {
-        return Err(ApiError::invalid_account(format!(
+        return Err(ApiError::invalid_account_owner(format!(
             "vault account has invalid owner. expected={}, actual={}",
             VAULT_PROGRAM_ID, account.owner
         )));
     }
 
     Vault::try_deserialize(&mut account.data.as_slice()).map_err(|error| {
-        ApiError::invalid_account(format!("failed to deserialize vault account: {error}"))
+        ApiError::account_deserialization_failed(format!(
+            "failed to deserialize vault account: {error}"
+        ))
     })
 }
 
@@ -36,20 +38,20 @@ pub fn fetch_manager_withdraw_request(
     let account = rpc_client
         .get_account(manager_withdraw_request)
         .map_err(|error| {
-            ApiError::not_found(format!(
+            ApiError::account_not_found(format!(
                 "manager withdraw request account not found: {error}"
             ))
         })?;
 
     if account.owner != VAULT_PROGRAM_ID {
-        return Err(ApiError::invalid_account(format!(
+        return Err(ApiError::invalid_account_owner(format!(
             "manager withdraw request account has invalid owner. expected={}, actual={}",
             VAULT_PROGRAM_ID, account.owner
         )));
     }
 
     ManagerWithdrawRequest::try_deserialize(&mut account.data.as_slice()).map_err(|error| {
-        ApiError::invalid_account(format!(
+        ApiError::account_deserialization_failed(format!(
             "failed to deserialize manager withdraw request account: {error}"
         ))
     })
@@ -59,19 +61,19 @@ pub fn fetch_module_entry(
     rpc_client: &RpcClient,
     module_entry: &Pubkey,
 ) -> Result<ModuleEntry, ApiError> {
-    let account = rpc_client
-        .get_account(module_entry)
-        .map_err(|error| ApiError::not_found(format!("module entry account not found: {error}")))?;
+    let account = rpc_client.get_account(module_entry).map_err(|error| {
+        ApiError::account_not_found(format!("module entry account not found: {error}"))
+    })?;
 
     if account.owner != VAULT_PROGRAM_ID {
-        return Err(ApiError::invalid_account(format!(
+        return Err(ApiError::invalid_account_owner(format!(
             "module entry account has invalid owner. expected={}, actual={}",
             VAULT_PROGRAM_ID, account.owner
         )));
     }
 
     ModuleEntry::try_deserialize(&mut account.data.as_slice()).map_err(|error| {
-        ApiError::invalid_account(format!(
+        ApiError::account_deserialization_failed(format!(
             "failed to deserialize module entry account: {error}"
         ))
     })

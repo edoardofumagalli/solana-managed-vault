@@ -246,27 +246,27 @@ pub fn resolve_execute_manager_withdraw_accounts(
     manager_withdraw_request: Pubkey,
 ) -> Result<ExecuteManagerWithdrawAccounts, ApiError> {
     if request_state.vault != request.vault {
-        return Err(ApiError::invalid_account(format!(
+        return Err(ApiError::invalid_account_state(format!(
             "manager withdraw request vault mismatch. expected={}, actual={}",
             request.vault, request_state.vault
         )));
     }
 
     if request_state.request_id != request.request_id {
-        return Err(ApiError::invalid_account(format!(
+        return Err(ApiError::invalid_account_state(format!(
             "manager withdraw request id mismatch. expected={}, actual={}",
             request.request_id, request_state.request_id
         )));
     }
 
     if request_state.amount == 0 {
-        return Err(ApiError::invalid_account(
+        return Err(ApiError::invalid_account_state(
             "manager withdraw request amount must be greater than zero",
         ));
     }
 
     if request_state.manager != vault_state.manager {
-        return Err(ApiError::invalid_account(format!(
+        return Err(ApiError::invalid_account_state(format!(
             "manager withdraw request manager does not match current vault manager. expected={}, actual={}",
             vault_state.manager, request_state.manager
         )));

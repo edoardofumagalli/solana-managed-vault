@@ -111,8 +111,19 @@ stable.
 | `backend/Cargo.toml`, `backend/Cargo.lock` | `keep-operational` | Backend crate metadata and lockfile. Keep tracked. |
 | `backend/src/main.rs` | `keep-source` | Axum app entrypoint. Small and healthy. |
 | `backend/src/config.rs` | `keep-source` | App config. Keep; later add env documentation if config grows. |
-| `backend/src/api.rs` | `keep-source`, `refactor-candidate` | Contains request DTOs, response DTOs, error model, summary types. Active but growing. Later split by domain: user, manager, admin, modules, shared. |
-| `backend/src/routes/transactions.rs` | `keep-source`, `refactor-candidate` | Active but very large. Split into user, manager, admin, modules route modules after behavior is stable. |
+| `backend/src/api/mod.rs` | `keep-source` | API module facade. Re-exports domain DTOs, shared transaction response types, and API error types. |
+| `backend/src/api/error.rs` | `keep-source` | API error type, error response body, and `ApiResult` alias. Keep shared. |
+| `backend/src/api/transaction.rs` | `keep-source` | Shared transaction build response, summary, action enum, and simulation summary types. Keep shared. |
+| `backend/src/api/user.rs` | `keep-source` | User transaction request DTOs for deposit and async withdraw. |
+| `backend/src/api/manager.rs` | `keep-source` | Manager transaction request DTOs for manager deposit, float reporting, and manager withdraw. |
+| `backend/src/api/admin.rs` | `keep-source` | Admin/authority transaction request DTOs for emergency shutdown and manager update. |
+| `backend/src/api/modules.rs` | `keep-source` | Generic module transaction request DTOs and ordered `remainingAccounts` shape. |
+| `backend/src/routes/transactions/mod.rs` | `keep-source` | Transaction route facade. Merges user, manager, admin, and module route groups under `/transactions`. |
+| `backend/src/routes/transactions/common.rs` | `keep-source` | Shared transaction route helpers for blockhash, account-state fetches, simulation, and response construction. |
+| `backend/src/routes/transactions/user.rs` | `keep-source` | User transaction handlers for deposit and async withdraw. |
+| `backend/src/routes/transactions/manager.rs` | `keep-source` | Manager transaction handlers for float and manager withdraw flows. |
+| `backend/src/routes/transactions/admin.rs` | `keep-source` | Emergency shutdown and manager update transaction handlers. |
+| `backend/src/routes/transactions/modules.rs` | `keep-source` | Generic module transaction handlers for register, sync NAV, deploy, and recall. |
 | `backend/src/routes/health.rs` | `keep-source` | Small health endpoint. Keep. |
 | `backend/src/routes/config.rs` | `keep-source` | Small config endpoint. Keep. |
 | `backend/src/routes/rpc.rs` | `keep-source` | Small RPC health endpoint. Keep. |
@@ -128,10 +139,11 @@ stable.
 
 Backend cleanup order:
 
-1. Extract repeated route boilerplate for blockhash and vault fetch.
-2. Split `routes/transactions.rs` by endpoint family.
-3. Split `api.rs` only after route split is done.
-4. Improve structured error codes after split, not before.
+1. Done: extract repeated route boilerplate for blockhash and account-state fetches.
+2. Done: split transaction routes by endpoint family.
+3. Done: split API request/response types by domain while keeping `api/mod.rs`
+   re-exports for compatibility.
+4. Done: improve structured error codes after split.
 5. Add compute budget tuning in `transaction_builder` / `transaction_simulator`
    after the cleanup baseline is committed.
 

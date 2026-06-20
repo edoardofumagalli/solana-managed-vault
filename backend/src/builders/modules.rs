@@ -265,14 +265,14 @@ pub fn validate_module_entry(
     module_entry_state: &ModuleEntry,
 ) -> Result<(), ApiError> {
     if module_entry_state.vault != expected_vault {
-        return Err(ApiError::invalid_account(format!(
+        return Err(ApiError::invalid_account_state(format!(
             "module entry vault mismatch. expected={}, actual={}",
             expected_vault, module_entry_state.vault
         )));
     }
 
     if !module_entry_state.is_active {
-        return Err(ApiError::invalid_account(
+        return Err(ApiError::invalid_account_state(
             "module entry is not active".to_string(),
         ));
     }
@@ -284,7 +284,7 @@ pub fn validate_module_entry(
     );
 
     if module_entry != expected_module_entry {
-        return Err(ApiError::invalid_account(format!(
+        return Err(ApiError::invalid_account_state(format!(
             "module entry PDA mismatch. expected={}, actual={}",
             expected_module_entry, module_entry
         )));
@@ -520,7 +520,7 @@ fn parse_remaining_accounts(
     accounts: Vec<ModuleRemainingAccountRequest>,
 ) -> Result<Vec<ParsedModuleRemainingAccount>, ApiError> {
     if accounts.is_empty() {
-        return Err(ApiError::bad_request(
+        return Err(ApiError::missing_remaining_account(
             "remainingAccounts must include at least one account",
         ));
     }
@@ -538,7 +538,7 @@ fn parse_remaining_account(
     let field_prefix = format!("remainingAccounts[{index}]");
 
     if account.is_signer {
-        return Err(ApiError::bad_request(format!(
+        return Err(ApiError::unsupported_signer(format!(
             "{field_prefix}.isSigner must be false in the first backend version"
         )));
     }
@@ -575,7 +575,7 @@ fn ensure_remaining_account(
         return Ok(());
     }
 
-    Err(ApiError::bad_request(format!(
+    Err(ApiError::missing_remaining_account(format!(
         "{field} must include {label}: {required_pubkey}"
     )))
 }
@@ -590,7 +590,7 @@ fn ensure_remaining_account_absent(
         return Ok(());
     }
 
-    Err(ApiError::bad_request(format!(
+    Err(ApiError::forbidden_remaining_account(format!(
         "{field} must not include {label}: {disallowed_pubkey}"
     )))
 }

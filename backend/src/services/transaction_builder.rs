@@ -27,7 +27,7 @@ pub fn build_unsigned_transaction(
 ) -> Result<UnsignedTransaction, ApiError> {
     let message =
         Message::try_compile(&fee_payer, instructions, &[], recent_blockhash).map_err(|error| {
-            ApiError::invalid_account(format!("failed to compile transaction: {error}"))
+            ApiError::transaction_compile_failed(format!("failed to compile transaction: {error}"))
         })?;
 
     let signature_count = usize::from(message.header.num_required_signatures);
@@ -37,7 +37,9 @@ pub fn build_unsigned_transaction(
     };
 
     let transaction_bytes = bincode::serialize(&transaction).map_err(|error| {
-        ApiError::invalid_account(format!("failed to serialize transaction: {error}"))
+        ApiError::transaction_serialization_failed(format!(
+            "failed to serialize transaction: {error}"
+        ))
     })?;
 
     Ok(UnsignedTransaction {

@@ -71,7 +71,7 @@ pub fn parse_nominate_manager_request(
     let new_manager = parse_pubkey("newManager", &request.new_manager)?;
 
     if new_manager == Pubkey::default() {
-        return Err(ApiError::bad_request(
+        return Err(ApiError::invalid_request(
             "newManager must not be the default public key",
         ));
     }

@@ -27,11 +27,11 @@ pub async fn simulate_transaction_if_requested(
                 },
             )
             .map_err(|error| {
-                ApiError::service_unavailable(format!("RPC simulation failed: {error}"))
+                ApiError::rpc_simulation_failed(format!("RPC simulation failed: {error}"))
             })
     })
     .await
-    .map_err(|error| ApiError::service_unavailable(format!("RPC task failed: {error}")))??;
+    .map_err(|error| ApiError::rpc_task_failed(format!("RPC task failed: {error}")))??;
 
     Ok(Some(SimulationSummary {
         ok: simulation_result.value.err.is_none(),

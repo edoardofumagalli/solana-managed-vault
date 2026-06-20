@@ -23,8 +23,8 @@ pub async fn rpc_health(State(state): State<AppState>) -> ApiResult<RpcHealthRes
 
     let latest_blockhash = task::spawn_blocking(move || rpc_client.get_latest_blockhash())
         .await
-        .map_err(|error| ApiError::service_unavailable(format!("RPC task failed: {error}")))?
-        .map_err(|error| ApiError::service_unavailable(format!("RPC request failed: {error}")))?;
+        .map_err(|error| ApiError::rpc_task_failed(format!("RPC task failed: {error}")))?
+        .map_err(|error| ApiError::rpc_request_failed(format!("RPC request failed: {error}")))?;
 
     Ok(Json(RpcHealthResponse {
         status: "ok",
