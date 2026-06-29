@@ -58,6 +58,13 @@ Proposed response:
   "feePayer": "<fee payer public key>",
   "recentBlockhash": "<blockhash>",
   "lastValidBlockHeight": 123,
+  "computeBudget": {
+    "mode": "auto",
+    "requestedUnits": 90200,
+    "estimatedUnits": 82000,
+    "marginBps": 1000,
+    "microLamports": "0"
+  },
   "summary": {
     "action": "deposit",
     "vault": "<vault public key>",
@@ -101,6 +108,11 @@ The summary should use a stable common shape across all transaction builders:
 - `amounts`: optional list of raw integer amounts. Each amount has a `kind`, such as `underlying`, `shares`, `reported_float_value`, or `module_underlying`.
 - `accounts`: optional list of important semantic accounts, such as `underlying_mint`, `share_mint`, `receiver_token_account`, `module_entry`, or `module_program`.
 - `details`: optional string map for small identifiers that are not accounts or amounts, such as `ticketIndex`, `requestId`, or `policySeed`.
+
+The optional `computeBudget` object describes compute budget instructions added
+by the backend. It is separate from `summary` because it is transaction envelope
+metadata rather than vault business intent. Clients can display it as an
+execution-cost detail, while keeping action summaries stable across endpoints.
 
 ## 5. Who Signs And Who Sends
 
@@ -156,6 +168,66 @@ Permissionless or cranker endpoints use `feePayer` instead of `wallet` when ther
 ```
 
 If the on-chain account list contains a non-privileged signer such as `executor` or `cranker`, the first backend version should set that account to `feePayer`. This keeps the response's `requiredSigners` list simple and avoids asking the client for two signatures when one fee-paying wallet is enough.
+
+### Common Transaction Options
+
+All transaction-building endpoints may accept shared transaction options in
+addition to endpoint-specific fields.
+
+Simulation remains controlled by `simulate`:
+
+```json
+{
+  "simulate": true
+}
+```
+
+Compute budget behavior should be controlled by a nested `computeBudget` object:
+
+```json
+{
+  "computeBudget": {
+    "mode": "auto",
+    "marginBps": 1000,
+    "microLamports": "0"
+  }
+}
+```
+
+Supported first-version modes:
+
+- `none`: do not add compute budget instructions. This is the default for
+  backwards compatibility with the current backend.
+- `auto`: estimate compute usage through backend simulation, add a margin, and
+  prepend a `SetComputeUnitLimit` instruction to the returned transaction.
+- `fixed`: use a caller-provided `unitLimit` and prepend a
+  `SetComputeUnitLimit` instruction without estimation.
+
+Recommended request shape:
+
+```json
+{
+  "computeBudget": {
+    "mode": "fixed",
+    "unitLimit": 300000,
+    "microLamports": "1000"
+  }
+}
+```
+
+Field rules:
+
+- `mode` is optional and defaults to `none`.
+- `unitLimit` is required for `fixed` mode and rejected for `auto` mode unless a
+  later version explicitly supports max caps.
+- `marginBps` is only used by `auto` mode. It defaults to `1000` basis points
+  (10%) and should be bounded by backend validation.
+- `microLamports` is optional. When present and greater than zero, the backend
+  prepends a `SetComputeUnitPrice` instruction in addition to the compute unit
+  limit instruction. Use a string because priority-fee inputs are u64-like
+  values and JavaScript clients should not rely on number precision.
+- Compute budget instructions must always be inserted before the vault
+  instruction and before any other non-compute-budget instruction.
 
 ### Endpoint Inputs
 
@@ -393,7 +465,189 @@ If simulation is enabled, the response can include:
 }
 ```
 
-## 12. Error Model
+Diagnostic simulation and compute budget estimation are related but distinct:
+
+- Diagnostic simulation is controlled by `simulate` and is returned to the
+  caller in the `simulation` response object.
+- Compute budget estimation is an internal build step used only when
+  `computeBudget.mode = "auto"`. It may run even when `simulate = false`.
+- If both are requested, the backend should estimate first, build the final
+  transaction with compute budget instructions, then optionally simulate the
+  final transaction for the user-facing response.
+
+## 12. Compute Budget Policy
+
+Solana transactions have a compute budget: the maximum compute units (CUs) the
+runtime may spend executing the transaction. If the transaction consumes more
+than its requested limit, execution fails with compute exhaustion. If the
+transaction requests far more CUs than it needs, it can be less efficient for
+scheduling and can overpay when a priority fee is attached.
+
+The backend should support compute budget tuning as a transaction-envelope
+feature, not as endpoint-specific business logic. Every endpoint already ends
+with the same operation: wrap one or more Solana instructions into an unsigned
+`VersionedTransaction`. Compute budget handling should live in the shared
+transaction services so user, manager, admin, and module endpoints all inherit
+the same behavior.
+
+### Why The Backend Should Own This First
+
+The backend already has the complete instruction list, the fee payer, the recent
+blockhash, and the RPC client needed for simulation. A browser client could also
+estimate compute, but making the backend produce the final unsigned transaction
+keeps the client contract simple:
+
+```text
+client describes desired vault action
+    -> backend resolves accounts and estimates compute if requested
+    -> backend returns the final unsigned transaction
+    -> wallet signs exactly that final transaction
+```
+
+This also matters because changing the compute unit limit changes the
+transaction message. A wallet must sign the final message after compute budget
+instructions have been inserted.
+
+### Modes
+
+`none` mode:
+
+- Preserve current behavior.
+- Do not add `SetComputeUnitLimit` or `SetComputeUnitPrice`.
+- Use this as the default until the feature is verified across endpoints.
+
+`fixed` mode:
+
+- Add `SetComputeUnitLimit(unitLimit)` before the vault instruction.
+- Optionally add `SetComputeUnitPrice(microLamports)` before the vault
+  instruction.
+- Do not simulate for estimation.
+- Useful for deterministic local experiments, manual testing, and debugging a
+  known Kamino/Klend flow.
+
+`auto` mode:
+
+- Build a provisional transaction for estimation.
+- Include a high `SetComputeUnitLimit` in the provisional transaction so the
+  estimate itself is less likely to fail from compute exhaustion.
+- Simulate the provisional transaction with signature verification disabled.
+- Require a successful simulation and a non-empty `unitsConsumed` value.
+- Compute the final requested units as:
+
+```text
+requested_units = ceil(estimated_units * (10_000 + margin_bps) / 10_000)
+```
+
+- Clamp `requested_units` to Solana's transaction maximum.
+- Rebuild the final unsigned transaction with `SetComputeUnitLimit` prepended.
+- Optionally prepend `SetComputeUnitPrice` when `microLamports > 0`.
+
+For the first backend version, `auto` should fail closed if estimation fails.
+Silently falling back to a broad default would make debugging harder and could
+hide account-routing or CPI issues, especially in Kamino flows.
+
+### Response Metadata
+
+When compute budget instructions are added, the response should include a
+top-level `computeBudget` object:
+
+```json
+{
+  "computeBudget": {
+    "mode": "auto",
+    "requestedUnits": 90200,
+    "estimatedUnits": 82000,
+    "marginBps": 1000,
+    "microLamports": "0"
+  }
+}
+```
+
+Field meanings:
+
+- `mode`: effective mode used by the backend.
+- `requestedUnits`: final compute unit limit inserted into the transaction.
+- `estimatedUnits`: simulation result used by `auto` mode. Omitted for `fixed`
+  mode.
+- `marginBps`: margin used by `auto` mode. Omitted for `fixed` mode unless the
+  backend wants to surface a default.
+- `microLamports`: compute unit price inserted into the transaction. Use `"0"`
+  when no priority fee instruction was added or omit it if the implementation
+  prefers sparse output.
+
+This object is intentionally separate from `simulation`. `simulation` describes
+the result of simulating a transaction. `computeBudget` describes how the final
+transaction was constructed.
+
+### Priority Fee Scope
+
+The first version should support caller-provided `microLamports` but should not
+attempt dynamic priority fee discovery. Dynamic priority fee selection depends
+on production RPC providers, market conditions, and endpoint policy. That is a
+separate operational concern from correctly estimating compute unit limits.
+
+Later versions can add:
+
+- backend config defaults per cluster;
+- endpoint-specific defaults for known heavy flows such as Kamino deploy/recall;
+- dynamic priority fee providers;
+- backend-operated cranker policies for permissionless endpoints.
+
+### Rollout Strategy
+
+Start with opt-in compute budget tuning:
+
+```json
+{
+  "computeBudget": {
+    "mode": "auto"
+  }
+}
+```
+
+Keep default mode as `none` while testing. This avoids changing the behavior of
+all endpoints at once and keeps existing manual scripts valid.
+
+Suggested verification order:
+
+1. `deposit`, because it is simple and already well understood.
+2. `request_withdraw` or `process_withdraw`, because they exercise more account
+   resolution without external protocol CPIs.
+3. Mock `modules/deploy`, because it exercises the generic module dispatch path.
+4. Kamino `modules/deploy`, because it is the first heavy real CPI flow.
+5. Kamino `modules/recall`, once deploy tuning is stable.
+
+After the feature is verified, consider defaulting selected heavy endpoints to
+`auto` through backend config while keeping request-level overrides for manual
+debugging.
+
+### Implementation Shape
+
+Keep endpoint builders focused on business instructions. They should not know
+how to estimate compute. The shared transaction layer should accept:
+
+- fee payer;
+- required signers;
+- recent blockhash;
+- business instructions;
+- compute budget request;
+- optional diagnostic simulation flag.
+
+The shared layer should then:
+
+1. Build the business-only instruction list.
+2. Estimate compute if requested.
+3. Prepend compute budget instructions.
+4. Build the final unsigned `VersionedTransaction`.
+5. Optionally simulate the final transaction for the response.
+6. Return the standard transaction response plus optional compute budget
+   metadata.
+
+This keeps the future migration path manageable. If the backend later supports
+address lookup tables, backend-operated crankers, or dynamic priority fees, the
+same shared transaction layer remains the right extension point.
+
+## 13. Error Model
 
 The API should return structured errors.
 
@@ -423,9 +677,11 @@ Useful error categories:
 - `MODULE_NOT_REGISTERED`
 - `KAMINO_ACCOUNT_MISMATCH`
 - `SIMULATION_FAILED`
+- `COMPUTE_BUDGET_ESTIMATION_FAILED`
+- `INVALID_COMPUTE_BUDGET`
 - `RPC_ERROR`
 
-## 13. Security Notes
+## 14. Security Notes
 
 The backend must not be treated as a security boundary for vault funds.
 
@@ -442,7 +698,7 @@ Important rules:
 
 If a backend signer is introduced later for cranking, it should be scoped to permissionless operations and configured separately from user flows.
 
-## 14. Implementation Plan
+## 15. Implementation Plan
 
 ### Phase 1: Skeleton
 
@@ -593,7 +849,46 @@ Build the manager/admin endpoints in a liquidity-first order. This keeps the bac
    - manual inspect scripts should consume the fixture helpers instead of hardcoding long account arrays in each script;
    - Surfpool-backed Kamino tests should come after the Kamino fixture account list is stable, because those tests validate the real protocol account wiring rather than the generic backend response shape alone.
 
-## 15. Decisions Before Implementation
+### Phase 6: Compute Budget Tuning
+
+Add compute budget tuning after the shared transaction-building surface and
+manual Kamino flow are stable.
+
+1. Add shared API DTOs for `computeBudget`:
+   - support `none`, `fixed`, and `auto` modes;
+   - default to `none`;
+   - parse `microLamports` as a string-backed u64-like value;
+   - validate `unitLimit`, `marginBps`, and incompatible field combinations in
+     one shared helper.
+2. Add response metadata:
+   - top-level optional `computeBudget`;
+   - include final requested units, estimated units when available, margin, and
+     compute unit price.
+3. Add compute budget instruction helpers:
+   - create `SetComputeUnitLimit`;
+   - create `SetComputeUnitPrice`;
+   - always prepend them before vault/business instructions.
+4. Split simulation responsibilities:
+   - keep user-facing diagnostic simulation controlled by `simulate`;
+   - add internal estimation simulation for `computeBudget.mode = "auto"`;
+   - make estimation failure a structured error.
+5. Update the shared transaction response builder:
+   - accept business instructions and compute budget options;
+   - build a provisional transaction for estimation when needed;
+   - rebuild the final unsigned transaction with compute budget instructions;
+   - optionally simulate the final transaction for user-facing diagnostics.
+6. Roll out endpoint wiring incrementally:
+   - start with `deposit`;
+   - then user withdraw builders;
+   - then mock module deploy;
+   - then Kamino deploy/recall on Surfpool.
+7. Update manual inspect scripts only after the backend DTO is stable:
+   - add `--compute-budget-mode`;
+   - add `--compute-unit-limit` for fixed mode;
+   - add `--compute-margin-bps` for auto mode;
+   - add `--compute-unit-price-micro-lamports` for priority fee testing.
+
+## 16. Decisions Before Implementation
 
 Before writing the backend, decide these points:
 
@@ -607,3 +902,7 @@ Before writing the backend, decide these points:
 8. Kamino account source: static config/fixture first, or implement account discovery immediately.
 9. API auth: public transaction builder, or role-aware API keys for manager/admin endpoints.
 10. First endpoint: start with `deposit`, because it is the simplest user flow and gives quick feedback.
+11. Compute budget default: keep `none` for backwards compatibility, then enable
+    `auto` selectively after manual verification.
+12. Priority fee source: accept caller-provided `microLamports` first; defer
+    dynamic fee discovery to a production operations phase.
