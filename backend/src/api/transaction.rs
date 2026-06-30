@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+use super::compute_budget::ComputeBudgetSummary;
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionBuildResponse {
@@ -10,6 +12,8 @@ pub struct TransactionBuildResponse {
     pub fee_payer: String,
     pub recent_blockhash: String,
     pub last_valid_block_height: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compute_budget: Option<ComputeBudgetSummary>,
     pub summary: TransactionSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub simulation: Option<SimulationSummary>,

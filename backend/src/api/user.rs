@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use super::compute_budget::ComputeBudgetRequest;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DepositTransactionRequest {
@@ -8,6 +10,8 @@ pub struct DepositTransactionRequest {
     pub amount: String,
     #[serde(default)]
     pub simulate: bool,
+    #[serde(default)]
+    pub compute_budget: ComputeBudgetRequest,
 }
 
 #[derive(Debug, Deserialize)]

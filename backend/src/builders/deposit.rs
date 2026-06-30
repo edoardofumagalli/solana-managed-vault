@@ -5,7 +5,7 @@ use spl_associated_token_account::get_associated_token_address_with_program_id;
 use spl_token::ID as TOKEN_PROGRAM_ID;
 
 use crate::{
-    api::{ApiError, DepositTransactionRequest},
+    api::{ApiError, DepositTransactionRequest, ValidatedComputeBudgetRequest},
     builders::common::{parse_positive_u64, parse_pubkey},
 };
 
@@ -15,6 +15,7 @@ pub struct ParsedDepositTransactionRequest {
     pub user: Pubkey,
     pub amount: u64,
     pub simulate: bool,
+    pub compute_budget: ValidatedComputeBudgetRequest,
 }
 
 #[derive(Debug)]
@@ -35,12 +36,14 @@ pub fn parse_deposit_request(
     let vault = parse_pubkey("vault", &request.vault)?;
     let user = parse_pubkey("user", &request.user)?;
     let amount = parse_positive_u64("amount", &request.amount)?;
+    let compute_budget = request.compute_budget.validate()?;
 
     Ok(ParsedDepositTransactionRequest {
         vault,
         user,
         amount,
         simulate: request.simulate,
+        compute_budget,
     })
 }
 

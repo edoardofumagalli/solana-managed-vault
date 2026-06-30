@@ -51,6 +51,14 @@ impl ApiError {
         )
     }
 
+    pub fn invalid_compute_budget(message: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::BAD_REQUEST,
+            ApiErrorCode::InvalidComputeBudget,
+            message,
+        )
+    }
+
     pub fn unsupported_signer(message: impl Into<String>) -> Self {
         Self::new(
             StatusCode::BAD_REQUEST,
@@ -186,6 +194,7 @@ pub enum ApiErrorCode {
     InvalidInteger,
     InvalidAmount,
     InvalidRequest,
+    InvalidComputeBudget,
     UnsupportedSigner,
     MissingRemainingAccount,
     ForbiddenRemainingAccount,
@@ -208,6 +217,7 @@ impl ApiErrorCode {
             Self::InvalidInteger => "INVALID_INTEGER",
             Self::InvalidAmount => "INVALID_AMOUNT",
             Self::InvalidRequest => "INVALID_REQUEST",
+            Self::InvalidComputeBudget => "INVALID_COMPUTE_BUDGET",
             Self::UnsupportedSigner => "UNSUPPORTED_SIGNER",
             Self::MissingRemainingAccount => "MISSING_REMAINING_ACCOUNT",
             Self::ForbiddenRemainingAccount => "FORBIDDEN_REMAINING_ACCOUNT",

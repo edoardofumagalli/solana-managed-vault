@@ -1,7 +1,8 @@
 use axum::{extract::State, routing::post, Json, Router};
 
 use super::common::{
-    build_transaction_response, fetch_vault_transaction_context, VaultTransactionContext,
+    build_transaction_response, build_transaction_response_from_instructions,
+    fetch_vault_transaction_context, TransactionResponseFromInstructions, VaultTransactionContext,
 };
 use crate::{
     api::{
@@ -52,24 +53,25 @@ async fn build_deposit_transaction(
 
     let deposit_accounts = resolve_deposit_accounts(&parsed_request, &vault_state);
     let deposit_instruction = build_deposit_instruction(&deposit_accounts, parsed_request.amount);
-    let unsigned_transaction = build_user_wallet_transaction(
-        deposit_accounts.depositor,
-        &[deposit_instruction],
-        latest_blockhash,
-    )?;
 
     Ok(Json(
-        build_transaction_response(
+        build_transaction_response_from_instructions(
             state.rpc_client.clone(),
-            unsigned_transaction,
-            last_valid_block_height,
-            TransactionSummary::new(TransactionAction::Deposit, parsed_request.vault)
-                .with_actor("user", deposit_accounts.depositor)
-                .with_amount("underlying", parsed_request.amount)
-                .with_account("underlying_mint", deposit_accounts.underlying_mint)
-                .with_account("share_mint", deposit_accounts.share_mint)
-                .with_account("vault_token_account", deposit_accounts.vault_token_account),
-            parsed_request.simulate,
+            TransactionResponseFromInstructions {
+                fee_payer: deposit_accounts.depositor,
+                required_signers: vec![deposit_accounts.depositor],
+                business_instructions: vec![deposit_instruction],
+                recent_blockhash: latest_blockhash,
+                last_valid_block_height,
+                compute_budget: parsed_request.compute_budget,
+                summary: TransactionSummary::new(TransactionAction::Deposit, parsed_request.vault)
+                    .with_actor("user", deposit_accounts.depositor)
+                    .with_amount("underlying", parsed_request.amount)
+                    .with_account("underlying_mint", deposit_accounts.underlying_mint)
+                    .with_account("share_mint", deposit_accounts.share_mint)
+                    .with_account("vault_token_account", deposit_accounts.vault_token_account),
+                should_simulate: parsed_request.simulate,
+            },
         )
         .await?,
     ))
