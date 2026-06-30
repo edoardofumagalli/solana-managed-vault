@@ -22,6 +22,8 @@ pub struct RequestWithdrawTransactionRequest {
     pub shares_amount: String,
     #[serde(default)]
     pub simulate: bool,
+    #[serde(default)]
+    pub compute_budget: ComputeBudgetRequest,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,6 +34,8 @@ pub struct CancelWithdrawTransactionRequest {
     pub ticket_index: String,
     #[serde(default)]
     pub simulate: bool,
+    #[serde(default)]
+    pub compute_budget: ComputeBudgetRequest,
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,4 +47,6 @@ pub struct ProcessWithdrawTransactionRequest {
     pub fee_payer: String,
     #[serde(default)]
     pub simulate: bool,
+    #[serde(default)]
+    pub compute_budget: ComputeBudgetRequest,
 }

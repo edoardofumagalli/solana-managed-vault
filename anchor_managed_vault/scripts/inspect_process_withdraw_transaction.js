@@ -1,4 +1,7 @@
 const {
+  COMPUTE_BUDGET_INSPECT_OPTIONS,
+  COMPUTE_BUDGET_USAGE,
+  buildComputeBudgetRequest,
   handleInspectError,
   inspectBackendTransaction,
   parseInspectArgs,
@@ -15,6 +18,7 @@ function parseArgs(argv) {
       user: "user",
       "ticket-index": "ticketIndex",
       "fee-payer": "feePayer",
+      ...COMPUTE_BUDGET_INSPECT_OPTIONS,
     },
     required: ["vault", "user", "ticketIndex", "feePayer"],
   });
@@ -29,6 +33,7 @@ Usage:
     --ticket-index <ticket_index> \\
     --fee-payer <fee_payer_pubkey> \\
     [--simulate] \\
+${COMPUTE_BUDGET_USAGE}
     [--output .tmp/process-withdraw-transaction.json] \\
     [--backend-url http://127.0.0.1:8080]
 
@@ -38,13 +43,20 @@ Environment:
 }
 
 function buildRequestBody(args) {
-  return {
+  const requestBody = {
     vault: args.vault,
     user: args.user,
     ticketIndex: args.ticketIndex,
     feePayer: args.feePayer,
     simulate: args.simulate,
   };
+  const computeBudget = buildComputeBudgetRequest(args);
+
+  if (computeBudget) {
+    requestBody.computeBudget = computeBudget;
+  }
+
+  return requestBody;
 }
 
 inspectBackendTransaction({

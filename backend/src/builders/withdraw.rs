@@ -14,7 +14,7 @@ use spl_token::ID as TOKEN_PROGRAM_ID;
 
 use crate::api::{
     ApiError, CancelWithdrawTransactionRequest, ProcessWithdrawTransactionRequest,
-    RequestWithdrawTransactionRequest,
+    RequestWithdrawTransactionRequest, ValidatedComputeBudgetRequest,
 };
 use crate::builders::common::{parse_positive_u64, parse_pubkey, parse_u64};
 
@@ -24,6 +24,7 @@ pub struct ParsedRequestWithdrawTransactionRequest {
     pub user: Pubkey,
     pub shares_amount: u64,
     pub simulate: bool,
+    pub compute_budget: ValidatedComputeBudgetRequest,
 }
 
 #[derive(Debug)]
@@ -48,6 +49,7 @@ pub struct ParsedCancelWithdrawTransactionRequest {
     pub user: Pubkey,
     pub ticket_index: u64,
     pub simulate: bool,
+    pub compute_budget: ValidatedComputeBudgetRequest,
 }
 
 #[derive(Debug)]
@@ -71,6 +73,7 @@ pub struct ParsedProcessWithdrawTransactionRequest {
     pub ticket_index: u64,
     pub fee_payer: Pubkey,
     pub simulate: bool,
+    pub compute_budget: ValidatedComputeBudgetRequest,
 }
 
 #[derive(Debug)]
@@ -94,12 +97,14 @@ pub fn parse_request_withdraw_request(
     let vault = parse_pubkey("vault", &request.vault)?;
     let user = parse_pubkey("user", &request.user)?;
     let shares_amount = parse_positive_u64("sharesAmount", &request.shares_amount)?;
+    let compute_budget = request.compute_budget.validate()?;
 
     Ok(ParsedRequestWithdrawTransactionRequest {
         vault,
         user,
         shares_amount,
         simulate: request.simulate,
+        compute_budget,
     })
 }
 
@@ -109,12 +114,14 @@ pub fn parse_cancel_withdraw_request(
     let vault = parse_pubkey("vault", &request.vault)?;
     let user = parse_pubkey("user", &request.user)?;
     let ticket_index = parse_u64("ticketIndex", &request.ticket_index)?;
+    let compute_budget = request.compute_budget.validate()?;
 
     Ok(ParsedCancelWithdrawTransactionRequest {
         vault,
         user,
         ticket_index,
         simulate: request.simulate,
+        compute_budget,
     })
 }
 
@@ -125,6 +132,7 @@ pub fn parse_process_withdraw_request(
     let user = parse_pubkey("user", &request.user)?;
     let ticket_index = parse_u64("ticketIndex", &request.ticket_index)?;
     let fee_payer = parse_pubkey("feePayer", &request.fee_payer)?;
+    let compute_budget = request.compute_budget.validate()?;
 
     Ok(ParsedProcessWithdrawTransactionRequest {
         vault,
@@ -132,6 +140,7 @@ pub fn parse_process_withdraw_request(
         ticket_index,
         fee_payer,
         simulate: request.simulate,
+        compute_budget,
     })
 }
 

@@ -1,4 +1,7 @@
 const {
+  COMPUTE_BUDGET_INSPECT_OPTIONS,
+  COMPUTE_BUDGET_USAGE,
+  buildComputeBudgetRequest,
   handleInspectError,
   inspectBackendTransaction,
   parseInspectArgs,
@@ -14,6 +17,7 @@ function parseArgs(argv) {
       vault: "vault",
       user: "user",
       "shares-amount": "sharesAmount",
+      ...COMPUTE_BUDGET_INSPECT_OPTIONS,
     },
     required: ["vault", "user", "sharesAmount"],
   });
@@ -27,6 +31,7 @@ Usage:
     --user <user_pubkey> \\
     --shares-amount <share_base_units> \\
     [--simulate] \\
+${COMPUTE_BUDGET_USAGE}
     [--output .tmp/request-withdraw-transaction.json] \\
     [--backend-url http://127.0.0.1:8080]
 
@@ -36,12 +41,19 @@ Environment:
 }
 
 function buildRequestBody(args) {
-  return {
+  const requestBody = {
     vault: args.vault,
     user: args.user,
     sharesAmount: args.sharesAmount,
     simulate: args.simulate,
   };
+  const computeBudget = buildComputeBudgetRequest(args);
+
+  if (computeBudget) {
+    requestBody.computeBudget = computeBudget;
+  }
+
+  return requestBody;
 }
 
 inspectBackendTransaction({

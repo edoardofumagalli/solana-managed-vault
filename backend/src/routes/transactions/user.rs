@@ -1,8 +1,8 @@
 use axum::{extract::State, routing::post, Json, Router};
 
 use super::common::{
-    build_transaction_response, build_transaction_response_from_instructions,
-    fetch_vault_transaction_context, TransactionResponseFromInstructions, VaultTransactionContext,
+    build_transaction_response_from_instructions, fetch_vault_transaction_context,
+    TransactionResponseFromInstructions, VaultTransactionContext,
 };
 use crate::{
     api::{
@@ -19,9 +19,6 @@ use crate::{
             resolve_cancel_withdraw_accounts, resolve_process_withdraw_accounts,
             resolve_request_withdraw_accounts,
         },
-    },
-    services::transaction_builder::{
-        build_permissionless_transaction, build_user_wallet_transaction,
     },
     AppState,
 };
@@ -90,18 +87,21 @@ async fn build_cancel_withdraw_transaction(
 
     let cancel_withdraw_accounts = resolve_cancel_withdraw_accounts(&parsed_request, &vault_state);
     let cancel_withdraw_instruction = build_cancel_withdraw_instruction(&cancel_withdraw_accounts);
-    let unsigned_transaction = build_user_wallet_transaction(
-        cancel_withdraw_accounts.user,
-        &[cancel_withdraw_instruction],
-        latest_blockhash,
-    )?;
 
     Ok(Json(
-        build_transaction_response(
+        build_transaction_response_from_instructions(
             state.rpc_client.clone(),
-            unsigned_transaction,
-            last_valid_block_height,
-            TransactionSummary::new(TransactionAction::CancelWithdraw, parsed_request.vault)
+            TransactionResponseFromInstructions {
+                fee_payer: cancel_withdraw_accounts.user,
+                required_signers: vec![cancel_withdraw_accounts.user],
+                business_instructions: vec![cancel_withdraw_instruction],
+                recent_blockhash: latest_blockhash,
+                last_valid_block_height,
+                compute_budget: parsed_request.compute_budget,
+                summary: TransactionSummary::new(
+                    TransactionAction::CancelWithdraw,
+                    parsed_request.vault,
+                )
                 .with_actor("user", cancel_withdraw_accounts.user)
                 .with_account("underlying_mint", cancel_withdraw_accounts.underlying_mint)
                 .with_account("share_mint", cancel_withdraw_accounts.share_mint)
@@ -116,7 +116,8 @@ async fn build_cancel_withdraw_transaction(
                     cancel_withdraw_accounts.escrow_share_token_account,
                 )
                 .with_detail("ticketIndex", cancel_withdraw_accounts.ticket_index),
-            parsed_request.simulate,
+                should_simulate: parsed_request.simulate,
+            },
         )
         .await?,
     ))
@@ -139,18 +140,21 @@ async fn build_request_withdraw_transaction(
         &request_withdraw_accounts,
         parsed_request.shares_amount,
     );
-    let unsigned_transaction = build_user_wallet_transaction(
-        request_withdraw_accounts.user,
-        &[request_withdraw_instruction],
-        latest_blockhash,
-    )?;
 
     Ok(Json(
-        build_transaction_response(
+        build_transaction_response_from_instructions(
             state.rpc_client.clone(),
-            unsigned_transaction,
-            last_valid_block_height,
-            TransactionSummary::new(TransactionAction::RequestWithdraw, parsed_request.vault)
+            TransactionResponseFromInstructions {
+                fee_payer: request_withdraw_accounts.user,
+                required_signers: vec![request_withdraw_accounts.user],
+                business_instructions: vec![request_withdraw_instruction],
+                recent_blockhash: latest_blockhash,
+                last_valid_block_height,
+                compute_budget: parsed_request.compute_budget,
+                summary: TransactionSummary::new(
+                    TransactionAction::RequestWithdraw,
+                    parsed_request.vault,
+                )
                 .with_actor("user", request_withdraw_accounts.user)
                 .with_amount("shares", parsed_request.shares_amount)
                 .with_account("underlying_mint", request_withdraw_accounts.underlying_mint)
@@ -170,7 +174,8 @@ async fn build_request_withdraw_transaction(
                     request_withdraw_accounts.escrow_share_token_account,
                 )
                 .with_detail("ticketIndex", request_withdraw_accounts.ticket_index),
-            parsed_request.simulate,
+                should_simulate: parsed_request.simulate,
+            },
         )
         .await?,
     ))
@@ -191,18 +196,21 @@ async fn build_process_withdraw_transaction(
         resolve_process_withdraw_accounts(&parsed_request, &vault_state);
     let process_withdraw_instruction =
         build_process_withdraw_instruction(&process_withdraw_accounts);
-    let unsigned_transaction = build_permissionless_transaction(
-        parsed_request.fee_payer,
-        &[process_withdraw_instruction],
-        latest_blockhash,
-    )?;
 
     Ok(Json(
-        build_transaction_response(
+        build_transaction_response_from_instructions(
             state.rpc_client.clone(),
-            unsigned_transaction,
-            last_valid_block_height,
-            TransactionSummary::new(TransactionAction::ProcessWithdraw, parsed_request.vault)
+            TransactionResponseFromInstructions {
+                fee_payer: parsed_request.fee_payer,
+                required_signers: vec![parsed_request.fee_payer],
+                business_instructions: vec![process_withdraw_instruction],
+                recent_blockhash: latest_blockhash,
+                last_valid_block_height,
+                compute_budget: parsed_request.compute_budget,
+                summary: TransactionSummary::new(
+                    TransactionAction::ProcessWithdraw,
+                    parsed_request.vault,
+                )
                 .with_actor("fee_payer", parsed_request.fee_payer)
                 .with_account("withdraw_user", process_withdraw_accounts.user)
                 .with_account("underlying_mint", process_withdraw_accounts.underlying_mint)
@@ -222,7 +230,8 @@ async fn build_process_withdraw_transaction(
                     process_withdraw_accounts.escrow_share_token_account,
                 )
                 .with_detail("ticketIndex", process_withdraw_accounts.ticket_index),
-            parsed_request.simulate,
+                should_simulate: parsed_request.simulate,
+            },
         )
         .await?,
     ))
