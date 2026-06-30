@@ -5,6 +5,16 @@ const path = require("path");
 const DEFAULT_BACKEND_URL = "http://127.0.0.1:8080";
 const DEFAULT_FIXTURE_MODULE = "mockYield";
 const OUTPUT_SCHEMA = "managed-vault.backendTransactionBuild.v1";
+const COMPUTE_BUDGET_INSPECT_OPTIONS = Object.freeze({
+  "compute-budget-mode": "computeBudgetMode",
+  "compute-unit-limit": "computeUnitLimit",
+  "compute-margin-bps": "computeMarginBps",
+  "compute-unit-price-micro-lamports": "computeUnitPriceMicroLamports",
+});
+const COMPUTE_BUDGET_USAGE = `    [--compute-budget-mode none|fixed|auto] \\
+    [--compute-unit-limit <units>] \\
+    [--compute-margin-bps <basis_points>] \\
+    [--compute-unit-price-micro-lamports <micro_lamports>] \\`;
 
 function usageError(message) {
   const error = new Error(message);
@@ -135,6 +145,73 @@ function parseJsonArgument(field, value) {
   } catch (error) {
     throw usageError(`${field} must be valid JSON: ${error.message}`);
   }
+}
+
+function parseOptionalInteger(field, value) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!/^\d+$/.test(value)) {
+    throw usageError(`${field} must be an unsigned integer`);
+  }
+
+  const parsedValue = Number(value);
+  if (!Number.isSafeInteger(parsedValue)) {
+    throw usageError(`${field} is too large to be represented safely`);
+  }
+
+  return parsedValue;
+}
+
+function buildComputeBudgetRequest(args) {
+  const hasComputeBudgetOption =
+    args.computeBudgetMode !== undefined ||
+    args.computeUnitLimit !== undefined ||
+    args.computeMarginBps !== undefined ||
+    args.computeUnitPriceMicroLamports !== undefined;
+
+  if (!hasComputeBudgetOption) {
+    return undefined;
+  }
+
+  if (!args.computeBudgetMode) {
+    throw usageError(
+      "Pass --compute-budget-mode when using compute budget options."
+    );
+  }
+
+  const computeBudget = {
+    mode: args.computeBudgetMode,
+  };
+  const unitLimit = parseOptionalInteger(
+    "--compute-unit-limit",
+    args.computeUnitLimit
+  );
+  const marginBps = parseOptionalInteger(
+    "--compute-margin-bps",
+    args.computeMarginBps
+  );
+
+  if (unitLimit !== undefined) {
+    computeBudget.unitLimit = unitLimit;
+  }
+
+  if (marginBps !== undefined) {
+    computeBudget.marginBps = marginBps;
+  }
+
+  if (args.computeUnitPriceMicroLamports !== undefined) {
+    if (!/^\d+$/.test(args.computeUnitPriceMicroLamports)) {
+      throw usageError(
+        "--compute-unit-price-micro-lamports must be an unsigned integer"
+      );
+    }
+
+    computeBudget.microLamports = args.computeUnitPriceMicroLamports;
+  }
+
+  return computeBudget;
 }
 
 function normalizeRemainingAccounts(source, value) {
@@ -415,9 +492,12 @@ function handleInspectError(error, printUsage, prefix) {
 }
 
 module.exports = {
+  COMPUTE_BUDGET_INSPECT_OPTIONS,
+  COMPUTE_BUDGET_USAGE,
   DEFAULT_BACKEND_URL,
   DEFAULT_FIXTURE_MODULE,
   OUTPUT_SCHEMA,
+  buildComputeBudgetRequest,
   handleInspectError,
   inspectBackendTransaction,
   loadFixtureRequest,
