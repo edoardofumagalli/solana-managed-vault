@@ -277,6 +277,27 @@ function printBackendResponse(response) {
   console.log(`recent blockhash: ${response.recentBlockhash}`);
   console.log(`last valid block height: ${response.lastValidBlockHeight}`);
 
+  if (response.computeBudget) {
+    console.log("compute budget:");
+    console.log(`  mode: ${response.computeBudget.mode}`);
+    if (response.computeBudget.requestedUnits !== undefined) {
+      console.log(
+        `  requested units: ${response.computeBudget.requestedUnits}`
+      );
+    }
+    if (response.computeBudget.estimatedUnits !== undefined) {
+      console.log(
+        `  estimated units: ${response.computeBudget.estimatedUnits}`
+      );
+    }
+    if (response.computeBudget.marginBps !== undefined) {
+      console.log(`  margin bps: ${response.computeBudget.marginBps}`);
+    }
+    if (response.computeBudget.microLamports !== undefined) {
+      console.log(`  micro lamports: ${response.computeBudget.microLamports}`);
+    }
+  }
+
   if (response.simulation) {
     console.log("\nSimulation");
     console.log(`ok: ${response.simulation.ok}`);
