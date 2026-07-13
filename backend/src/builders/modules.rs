@@ -19,7 +19,7 @@ use crate::{
     api::{
         ApiError, DeployToModuleTransactionRequest, ModuleRemainingAccountRequest,
         RecallFromModuleTransactionRequest, RegisterModuleTransactionRequest,
-        SyncModuleNavTransactionRequest,
+        SyncModuleNavTransactionRequest, ValidatedComputeBudgetRequest,
     },
     builders::common::{parse_positive_u64, parse_pubkey, parse_u64},
 };
@@ -50,6 +50,7 @@ pub struct ParsedDeployToModuleTransactionRequest {
     pub amount: u64,
     pub remaining_accounts: Vec<ParsedModuleRemainingAccount>,
     pub simulate: bool,
+    pub compute_budget: ValidatedComputeBudgetRequest,
 }
 
 #[derive(Debug)]
@@ -171,6 +172,7 @@ pub fn parse_deploy_to_module_request(
     let module_entry = parse_pubkey("moduleEntry", &request.module_entry)?;
     let amount = parse_positive_u64("amount", &request.amount)?;
     let remaining_accounts = parse_remaining_accounts(request.remaining_accounts)?;
+    let compute_budget = request.compute_budget.validate()?;
 
     Ok(ParsedDeployToModuleTransactionRequest {
         vault,
@@ -179,6 +181,7 @@ pub fn parse_deploy_to_module_request(
         amount,
         remaining_accounts,
         simulate: request.simulate,
+        compute_budget,
     })
 }
 

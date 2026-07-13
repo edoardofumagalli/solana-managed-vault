@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use super::compute_budget::ComputeBudgetRequest;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterModuleTransactionRequest {
@@ -33,6 +35,8 @@ pub struct DeployToModuleTransactionRequest {
     pub remaining_accounts: Vec<ModuleRemainingAccountRequest>,
     #[serde(default)]
     pub simulate: bool,
+    #[serde(default)]
+    pub compute_budget: ComputeBudgetRequest,
 }
 
 #[derive(Debug, Deserialize)]

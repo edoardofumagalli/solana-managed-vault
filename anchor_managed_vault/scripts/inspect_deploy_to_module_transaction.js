@@ -1,5 +1,8 @@
 const {
+  COMPUTE_BUDGET_INSPECT_OPTIONS,
+  COMPUTE_BUDGET_USAGE,
   DEFAULT_FIXTURE_MODULE,
+  buildComputeBudgetRequest,
   handleInspectError,
   inspectBackendTransaction,
   loadFixtureRequest,
@@ -23,6 +26,7 @@ function parseArgs(argv) {
       amount: "amount",
       "remaining-accounts-file": "remainingAccountsFile",
       "remaining-accounts-json": "remainingAccountsJson",
+      ...COMPUTE_BUDGET_INSPECT_OPTIONS,
     },
   });
 }
@@ -35,6 +39,7 @@ Usage with fixture:
     [--fixture-module mockYield] \\
     [--amount 250000] \\
     [--simulate] \\
+${COMPUTE_BUDGET_USAGE}
     [--output .tmp/deploy-to-module-transaction.json] \\
     [--backend-url http://127.0.0.1:8080]
 
@@ -47,6 +52,7 @@ Usage with explicit accounts:
     --remaining-accounts-file .tmp/mock-deploy-remaining-accounts.json \\
     [--remaining-accounts-json '<json_array_or_object>'] \\
     [--simulate] \\
+${COMPUTE_BUDGET_USAGE}
     [--output .tmp/deploy-to-module-transaction.json] \\
     [--backend-url http://127.0.0.1:8080]
 
@@ -76,6 +82,13 @@ function buildRequestBody(args) {
     "amount",
     "remainingAccounts",
   ]);
+
+  const computeBudget =
+    buildComputeBudgetRequest(args) || fixtureRequest.computeBudget;
+
+  if (computeBudget) {
+    requestBody.computeBudget = computeBudget;
+  }
 
   return requestBody;
 }

@@ -1,8 +1,9 @@
 use axum::{extract::State, routing::post, Json, Router};
 
 use super::common::{
-    build_transaction_response, fetch_module_transaction_context, fetch_vault_transaction_context,
-    ModuleTransactionContext, VaultTransactionContext,
+    build_transaction_response, build_transaction_response_from_instructions,
+    fetch_module_transaction_context, fetch_vault_transaction_context, ModuleTransactionContext,
+    TransactionResponseFromInstructions, VaultTransactionContext,
 };
 use crate::{
     api::{
@@ -153,48 +154,52 @@ async fn build_deploy_to_module_transaction(
         resolve_deploy_to_module_accounts(&parsed_request, &vault_state, &module_entry_state)?;
     let deploy_to_module_instruction =
         build_deploy_to_module_instruction(&deploy_to_module_accounts, parsed_request.amount);
-    let unsigned_transaction = build_user_wallet_transaction(
-        deploy_to_module_accounts.manager,
-        &[deploy_to_module_instruction],
-        latest_blockhash,
-    )?;
 
     Ok(Json(
-        build_transaction_response(
+        build_transaction_response_from_instructions(
             state.rpc_client.clone(),
-            unsigned_transaction,
-            last_valid_block_height,
-            with_manager_actor(
-                TransactionSummary::new(TransactionAction::DeployToModule, parsed_request.vault),
-                deploy_to_module_accounts.manager,
-            )
-            .with_amount("module_underlying", parsed_request.amount)
-            .with_account("module_entry", deploy_to_module_accounts.module_entry)
-            .with_account("module_program", deploy_to_module_accounts.module_program)
-            .with_account("module_state", deploy_to_module_accounts.module_state)
-            .with_account(
-                "module_underlying_token_account",
-                deploy_to_module_accounts.module_underlying_token_account,
-            )
-            .with_account(
-                "vault_token_account",
-                deploy_to_module_accounts.vault_token_account,
-            )
-            .with_account(
-                "module_call_authority",
-                deploy_to_module_accounts.module_call_authority,
-            )
-            .with_detail("policySeed", deploy_to_module_accounts.policy_seed)
-            .with_detail("oldCachedNav", deploy_to_module_accounts.cached_nav)
-            .with_detail(
-                "navLastUpdatedSlot",
-                deploy_to_module_accounts.nav_last_updated_slot,
-            )
-            .with_detail(
-                "remainingAccountsCount",
-                deploy_to_module_accounts.remaining_accounts.len(),
-            ),
-            parsed_request.simulate,
+            TransactionResponseFromInstructions {
+                fee_payer: deploy_to_module_accounts.manager,
+                required_signers: vec![deploy_to_module_accounts.manager],
+                business_instructions: vec![deploy_to_module_instruction],
+                recent_blockhash: latest_blockhash,
+                last_valid_block_height,
+                compute_budget: parsed_request.compute_budget,
+                summary: with_manager_actor(
+                    TransactionSummary::new(
+                        TransactionAction::DeployToModule,
+                        parsed_request.vault,
+                    ),
+                    deploy_to_module_accounts.manager,
+                )
+                .with_amount("module_underlying", parsed_request.amount)
+                .with_account("module_entry", deploy_to_module_accounts.module_entry)
+                .with_account("module_program", deploy_to_module_accounts.module_program)
+                .with_account("module_state", deploy_to_module_accounts.module_state)
+                .with_account(
+                    "module_underlying_token_account",
+                    deploy_to_module_accounts.module_underlying_token_account,
+                )
+                .with_account(
+                    "vault_token_account",
+                    deploy_to_module_accounts.vault_token_account,
+                )
+                .with_account(
+                    "module_call_authority",
+                    deploy_to_module_accounts.module_call_authority,
+                )
+                .with_detail("policySeed", deploy_to_module_accounts.policy_seed)
+                .with_detail("oldCachedNav", deploy_to_module_accounts.cached_nav)
+                .with_detail(
+                    "navLastUpdatedSlot",
+                    deploy_to_module_accounts.nav_last_updated_slot,
+                )
+                .with_detail(
+                    "remainingAccountsCount",
+                    deploy_to_module_accounts.remaining_accounts.len(),
+                ),
+                should_simulate: parsed_request.simulate,
+            },
         )
         .await?,
     ))
