@@ -228,44 +228,48 @@ async fn build_recall_from_module_transaction(
         resolve_recall_from_module_accounts(&parsed_request, &vault_state, &module_entry_state)?;
     let recall_from_module_instruction =
         build_recall_from_module_instruction(&recall_from_module_accounts, parsed_request.amount);
-    let unsigned_transaction = build_user_wallet_transaction(
-        recall_from_module_accounts.manager,
-        &[recall_from_module_instruction],
-        latest_blockhash,
-    )?;
 
     Ok(Json(
-        build_transaction_response(
+        build_transaction_response_from_instructions(
             state.rpc_client.clone(),
-            unsigned_transaction,
-            last_valid_block_height,
-            with_manager_actor(
-                TransactionSummary::new(TransactionAction::RecallFromModule, parsed_request.vault),
-                recall_from_module_accounts.manager,
-            )
-            .with_amount("module_underlying", parsed_request.amount)
-            .with_account("module_entry", recall_from_module_accounts.module_entry)
-            .with_account("module_program", recall_from_module_accounts.module_program)
-            .with_account("module_state", recall_from_module_accounts.module_state)
-            .with_account(
-                "vault_token_account",
-                recall_from_module_accounts.vault_token_account,
-            )
-            .with_account(
-                "module_call_authority",
-                recall_from_module_accounts.module_call_authority,
-            )
-            .with_detail("policySeed", recall_from_module_accounts.policy_seed)
-            .with_detail("oldCachedNav", recall_from_module_accounts.cached_nav)
-            .with_detail(
-                "navLastUpdatedSlot",
-                recall_from_module_accounts.nav_last_updated_slot,
-            )
-            .with_detail(
-                "remainingAccountsCount",
-                recall_from_module_accounts.remaining_accounts.len(),
-            ),
-            parsed_request.simulate,
+            TransactionResponseFromInstructions {
+                fee_payer: recall_from_module_accounts.manager,
+                required_signers: vec![recall_from_module_accounts.manager],
+                business_instructions: vec![recall_from_module_instruction],
+                recent_blockhash: latest_blockhash,
+                last_valid_block_height,
+                compute_budget: parsed_request.compute_budget,
+                summary: with_manager_actor(
+                    TransactionSummary::new(
+                        TransactionAction::RecallFromModule,
+                        parsed_request.vault,
+                    ),
+                    recall_from_module_accounts.manager,
+                )
+                .with_amount("module_underlying", parsed_request.amount)
+                .with_account("module_entry", recall_from_module_accounts.module_entry)
+                .with_account("module_program", recall_from_module_accounts.module_program)
+                .with_account("module_state", recall_from_module_accounts.module_state)
+                .with_account(
+                    "vault_token_account",
+                    recall_from_module_accounts.vault_token_account,
+                )
+                .with_account(
+                    "module_call_authority",
+                    recall_from_module_accounts.module_call_authority,
+                )
+                .with_detail("policySeed", recall_from_module_accounts.policy_seed)
+                .with_detail("oldCachedNav", recall_from_module_accounts.cached_nav)
+                .with_detail(
+                    "navLastUpdatedSlot",
+                    recall_from_module_accounts.nav_last_updated_slot,
+                )
+                .with_detail(
+                    "remainingAccountsCount",
+                    recall_from_module_accounts.remaining_accounts.len(),
+                ),
+                should_simulate: parsed_request.simulate,
+            },
         )
         .await?,
     ))

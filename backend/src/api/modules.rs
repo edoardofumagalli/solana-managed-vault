@@ -49,6 +49,8 @@ pub struct RecallFromModuleTransactionRequest {
     pub remaining_accounts: Vec<ModuleRemainingAccountRequest>,
     #[serde(default)]
     pub simulate: bool,
+    #[serde(default)]
+    pub compute_budget: ComputeBudgetRequest,
 }
 
 #[derive(Debug, Deserialize)]
