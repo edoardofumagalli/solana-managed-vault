@@ -223,6 +223,29 @@ For mock deploy, the forwarded `remainingAccounts` order is `mock_module_state`
 writable, then `module_token_account` writable. The backend preserves this order
 because the external module owns its own Anchor account order.
 
+Optional compute budget checks:
+
+```bash
+npm run backend:modules:deploy:inspect -- \
+  --fixture .tmp/backend-fixture.json \
+  --simulate \
+  --compute-budget-mode fixed \
+  --compute-unit-limit 150000 \
+  --output .tmp/deploy-to-module-fixed.json
+
+npm run backend:modules:deploy:inspect -- \
+  --fixture .tmp/backend-fixture.json \
+  --simulate \
+  --compute-budget-mode auto \
+  --compute-margin-bps 1000 \
+  --output .tmp/deploy-to-module-auto.json
+```
+
+For `fixed`, `response.computeBudget.requestedUnits` should equal `150000`.
+For `auto`, the response should include both `estimatedUnits` and
+`requestedUnits`. The final diagnostic simulation, when `--simulate` is passed,
+simulates the transaction after compute budget instructions have been inserted.
+
 ## Module Step 6: Sign And Send Deploy To Module
 
 ```bash
@@ -292,6 +315,27 @@ For mock recall, the forwarded `remainingAccounts` order is `mock_module_state`
 writable, `mock_module_authority` readonly, `underlying_mint` readonly,
 `module_token_account` writable, `vault_token_account` writable, and
 `token_program` readonly.
+
+Optional compute budget checks:
+
+```bash
+npm run backend:modules:recall:inspect -- \
+  --fixture .tmp/backend-fixture.json \
+  --simulate \
+  --compute-budget-mode fixed \
+  --compute-unit-limit 150000 \
+  --output .tmp/recall-from-module-fixed.json
+
+npm run backend:modules:recall:inspect -- \
+  --fixture .tmp/backend-fixture.json \
+  --simulate \
+  --compute-budget-mode auto \
+  --compute-margin-bps 1000 \
+  --output .tmp/recall-from-module-auto.json
+```
+
+The compute budget object is top-level response metadata, separate from the
+vault action `summary`.
 
 ## Module Step 8: Sign And Send Recall From Module
 

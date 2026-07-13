@@ -182,6 +182,31 @@ Expected checks:
 - logs include Kamino `Deposit` and Klend `DepositReserveLiquidity`;
 - simulation and signed send both succeed.
 
+Optional compute budget variants:
+
+```bash
+npm run backend:modules:deploy:inspect -- \
+  --fixture .tmp/backend-fixture.json \
+  --fixture-module kaminoUsdc \
+  --simulate \
+  --compute-budget-mode fixed \
+  --compute-unit-limit 500000 \
+  --output .tmp/kamino-deploy-to-module-fixed.json
+
+npm run backend:modules:deploy:inspect -- \
+  --fixture .tmp/backend-fixture.json \
+  --fixture-module kaminoUsdc \
+  --simulate \
+  --compute-budget-mode auto \
+  --compute-margin-bps 1000 \
+  --output .tmp/kamino-deploy-to-module-auto.json
+```
+
+Use `fixed` first when debugging account routing because it avoids coupling the
+test result to estimation. Use `auto` after the route works to verify that the
+backend can estimate `unitsConsumed`, apply the margin, and return a final
+transaction with compute budget instructions prepended.
+
 ## Kamino Step 7: Recall From Kamino
 
 ```bash
@@ -204,6 +229,33 @@ Expected checks:
 - `summary.details.remainingAccountsCount` is `19`;
 - logs include Kamino `Withdraw` and Klend `RedeemReserveCollateral`;
 - simulation and signed send both succeed.
+
+Optional compute budget variants:
+
+```bash
+npm run backend:modules:recall:inspect -- \
+  --fixture .tmp/backend-fixture.json \
+  --fixture-module kaminoUsdc \
+  --simulate \
+  --compute-budget-mode fixed \
+  --compute-unit-limit 500000 \
+  --output .tmp/kamino-recall-from-module-fixed.json
+
+npm run backend:modules:recall:inspect -- \
+  --fixture .tmp/backend-fixture.json \
+  --fixture-module kaminoUsdc \
+  --simulate \
+  --compute-budget-mode auto \
+  --compute-margin-bps 1000 \
+  --output .tmp/kamino-recall-from-module-auto.json
+```
+
+For `auto`, check:
+
+```bash
+jq '.response.computeBudget' .tmp/kamino-recall-from-module-auto.json
+jq '.response.simulation.unitsConsumed' .tmp/kamino-recall-from-module-auto.json
+```
 
 If you override the recall amount, keep it below the current Kamino module NAV.
 A full recall of the exact deploy amount can fail with `InsufficientCollateral`

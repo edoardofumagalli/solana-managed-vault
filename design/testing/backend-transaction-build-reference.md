@@ -24,8 +24,56 @@ The important top-level fields are:
 - `response.feePayer`: transaction fee payer;
 - `response.recentBlockhash` and `response.lastValidBlockHeight`: freshness
   window;
+- `response.computeBudget`: optional metadata describing compute budget
+  instructions inserted by the backend;
 - `response.summary`: stable user-facing transaction summary;
 - `response.simulation`: optional backend simulation result.
+
+## Compute Budget Fields
+
+Supported inspect scripts can pass compute budget options to the backend:
+
+```bash
+--compute-budget-mode none|fixed|auto
+--compute-unit-limit <units>
+--compute-margin-bps <basis_points>
+--compute-unit-price-micro-lamports <micro_lamports>
+```
+
+The currently supported endpoints are:
+
+- `deposit`;
+- `request_withdraw`;
+- `cancel_withdraw`;
+- `process_withdraw`;
+- `modules/deploy`;
+- `modules/recall`.
+
+`none` is the default and does not add compute budget instructions.
+
+`fixed` requires `--compute-unit-limit` and inserts
+`SetComputeUnitLimit(unitLimit)`. If
+`--compute-unit-price-micro-lamports` is greater than zero, the backend also
+inserts `SetComputeUnitPrice(microLamports)`.
+
+`auto` estimates compute units by simulating an internal provisional
+transaction, applies `marginBps`, and inserts the resulting
+`SetComputeUnitLimit`. With `--simulate`, the backend then simulates the final
+transaction and returns that result in `response.simulation`.
+
+Useful checks:
+
+```bash
+jq '.request.computeBudget' .tmp/deploy-to-module-auto.json
+jq '.response.computeBudget' .tmp/deploy-to-module-auto.json
+jq '.response.computeBudget.estimatedUnits' .tmp/deploy-to-module-auto.json
+jq '.response.computeBudget.requestedUnits' .tmp/deploy-to-module-auto.json
+jq '.response.simulation.unitsConsumed' .tmp/deploy-to-module-auto.json
+```
+
+`response.computeBudget.estimatedUnits` is present only for `auto` mode.
+`response.computeBudget.requestedUnits` is the final compute unit limit encoded
+in the returned transaction.
 
 ## Useful Inspection Commands
 
@@ -39,6 +87,8 @@ jq '.response.summary.details.remainingAccountsCount' .tmp/deploy-to-module-tran
 jq '.response.summary.details.remainingAccountsCount' .tmp/recall-from-module-transaction.json
 jq '.response.summary' .tmp/kamino-deploy-to-module-transaction.json
 jq '.response.summary' .tmp/kamino-recall-from-module-transaction.json
+jq '.response.computeBudget' .tmp/kamino-deploy-to-module-auto.json
+jq '.response.computeBudget' .tmp/kamino-recall-from-module-auto.json
 jq '.response.simulation.unitsConsumed' .tmp/kamino-recall-from-module-transaction.json
 ```
 

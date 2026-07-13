@@ -38,6 +38,13 @@ The backend now has a solid action-oriented foundation:
   - `modules/sync-nav`
   - `modules/deploy`
   - `modules/recall`
+- Opt-in compute budget support for the highest-priority transaction builders:
+  - `deposit`
+  - `request_withdraw`
+  - `cancel_withdraw`
+  - `process_withdraw`
+  - `modules/deploy`
+  - `modules/recall`
 - Modular local testing scripts:
   - one fixture setup script;
   - one inspect script per tested endpoint;
@@ -73,13 +80,14 @@ The next important technical challenge is Kamino:
 - Kamino-specific helpers should produce the ordered `remainingAccounts` arrays
   required by those generic endpoints.
 
-Simulation should later become more than a pass/fail check:
+Simulation is now used in two distinct ways for supported endpoints:
 
-- `unitsConsumed` can be used to tune compute budget instructions.
-- A future transaction builder can simulate once, estimate compute units, add
-  compute budget instructions, and then return the optimized transaction.
-- This is useful after the Kamino path works, because Kamino/Klend CPIs are the
-  flows most likely to need compute tuning.
+- `simulate: true` returns a user-facing diagnostic simulation result.
+- `computeBudget.mode = "auto"` runs an internal estimation simulation, applies
+  a margin, prepends compute budget instructions, and returns the final unsigned
+  transaction.
+- This is especially useful for Kamino/Klend CPIs, which are the flows most
+  likely to need compute tuning.
 
 The read side is a separate future phase:
 
@@ -338,13 +346,26 @@ hardest account-routing path is proven could optimize the wrong shape.
 
 Goal: use simulation results to return better transactions.
 
-Steps:
+Completed steps:
 
 1. Capture `unitsConsumed` from simulation for each endpoint.
 2. Add a compute unit margin policy.
 3. Add Solana Compute Budget instructions before the vault instruction.
 4. Rebuild and re-simulate the final transaction when needed.
 5. Keep the summary explicit about compute budget settings.
+
+Current scope:
+
+- implemented for user deposit and withdraw builders;
+- implemented for generic module deploy and recall;
+- tested manually with mock module and Surfpool Kamino USDC flows.
+
+Deferred scope:
+
+- manager/admin endpoints;
+- `modules/register`;
+- `modules/sync-nav`;
+- backend-config defaults or dynamic priority fee selection.
 
 Definition of done:
 

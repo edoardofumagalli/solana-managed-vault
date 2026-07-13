@@ -621,6 +621,26 @@ After the feature is verified, consider defaulting selected heavy endpoints to
 `auto` through backend config while keeping request-level overrides for manual
 debugging.
 
+Current implementation status:
+
+- Shared compute budget DTOs, validation, response metadata, compute budget
+  instruction helpers, internal estimation simulation, and the shared
+  transaction response builder are implemented.
+- `computeBudget` is currently wired for:
+  - `POST /transactions/deposit`;
+  - `POST /transactions/request-withdraw`;
+  - `POST /transactions/cancel-withdraw`;
+  - `POST /transactions/process-withdraw`;
+  - `POST /transactions/modules/deploy`;
+  - `POST /transactions/modules/recall`.
+- Manual inspect scripts expose the shared CLI flags for the same endpoints.
+- `modules/deploy` and `modules/recall` have been tested through the mock module
+  flow and through the Surfpool Kamino USDC flow.
+- Manager/admin endpoints, `modules/register`, and `modules/sync-nav` still use
+  the older transaction response path. They can be migrated later if operational
+  testing shows a need, but they are not the highest-priority compute-heavy
+  flows.
+
 ### Implementation Shape
 
 Keep endpoint builders focused on business instructions. They should not know
@@ -878,15 +898,18 @@ manual Kamino flow are stable.
    - rebuild the final unsigned transaction with compute budget instructions;
    - optionally simulate the final transaction for user-facing diagnostics.
 6. Roll out endpoint wiring incrementally:
-   - start with `deposit`;
-   - then user withdraw builders;
-   - then mock module deploy;
-   - then Kamino deploy/recall on Surfpool.
+   - `deposit`: completed;
+   - user withdraw builders: completed for request, cancel, and process;
+   - module deploy: completed and tested with mock and Kamino fixtures;
+   - module recall: completed and tested with mock and Kamino fixtures;
+   - remaining manager/admin and lightweight module endpoints: defer until there
+     is a concrete need or before making compute budget behavior global.
 7. Update manual inspect scripts only after the backend DTO is stable:
-   - add `--compute-budget-mode`;
-   - add `--compute-unit-limit` for fixed mode;
-   - add `--compute-margin-bps` for auto mode;
-   - add `--compute-unit-price-micro-lamports` for priority fee testing.
+   - `--compute-budget-mode`: completed for supported endpoints;
+   - `--compute-unit-limit` for fixed mode: completed for supported endpoints;
+   - `--compute-margin-bps` for auto mode: completed for supported endpoints;
+   - `--compute-unit-price-micro-lamports` for priority fee testing: completed
+     for supported endpoints.
 
 ## 16. Decisions Before Implementation
 

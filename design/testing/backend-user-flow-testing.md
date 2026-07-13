@@ -82,6 +82,33 @@ Expected checks:
 - backend simulation has `ok: true`;
 - decoded transaction has one signature slot.
 
+Optional compute budget checks:
+
+```bash
+npm run backend:deposit:inspect -- \
+  --vault "$VAULT" \
+  --user "$USER" \
+  --amount "$DEPOSIT_AMOUNT" \
+  --simulate \
+  --compute-budget-mode fixed \
+  --compute-unit-limit 100000 \
+  --output .tmp/deposit-fixed.json
+
+npm run backend:deposit:inspect -- \
+  --vault "$VAULT" \
+  --user "$USER" \
+  --amount "$DEPOSIT_AMOUNT" \
+  --simulate \
+  --compute-budget-mode auto \
+  --compute-margin-bps 1000 \
+  --output .tmp/deposit-auto.json
+```
+
+For `fixed`, expect `response.computeBudget.requestedUnits` to match the
+provided limit. For `auto`, expect both `estimatedUnits` and `requestedUnits`.
+The returned transaction should include compute budget instructions before the
+vault instruction.
+
 ## Step 3: Sign And Send Deposit
 
 First, review the saved transaction without signing:
@@ -139,6 +166,22 @@ Expected checks:
 - `summary.details.ticketIndex` is present;
 - backend simulation has `ok: true`.
 
+Optional compute budget check:
+
+```bash
+npm run backend:request-withdraw:inspect -- \
+  --vault "$VAULT" \
+  --user "$USER" \
+  --shares-amount "$SHARES_AMOUNT" \
+  --simulate \
+  --compute-budget-mode auto \
+  --compute-margin-bps 1000 \
+  --output .tmp/request-withdraw-auto.json
+```
+
+The saved response should include `response.computeBudget.estimatedUnits` and
+`response.computeBudget.requestedUnits`.
+
 Save the ticket index for the cancel or process step:
 
 ```bash
@@ -182,6 +225,19 @@ Expected checks:
 - `summary.details.ticketIndex` matches the requested ticket;
 - backend simulation has `ok: true`.
 
+Optional compute budget check:
+
+```bash
+npm run backend:cancel-withdraw:inspect -- \
+  --vault "$VAULT" \
+  --user "$USER" \
+  --ticket-index "$TICKET_INDEX" \
+  --simulate \
+  --compute-budget-mode auto \
+  --compute-margin-bps 1000 \
+  --output .tmp/cancel-withdraw-auto.json
+```
+
 ## Step 7: Sign And Send Cancel Withdraw
 
 ```bash
@@ -221,6 +277,20 @@ Expected checks:
 `process_withdraw` is permissionless at the vault-instruction level, but the
 Solana transaction still needs a fee payer signer. In the manual local flow,
 `FEE_PAYER="$USER"` keeps signing simple.
+
+Optional compute budget check:
+
+```bash
+npm run backend:process-withdraw:inspect -- \
+  --vault "$VAULT" \
+  --user "$USER" \
+  --ticket-index "$TICKET_INDEX" \
+  --fee-payer "$FEE_PAYER" \
+  --simulate \
+  --compute-budget-mode auto \
+  --compute-margin-bps 1000 \
+  --output .tmp/process-withdraw-auto.json
+```
 
 ## Step 9: Sign And Send Process Withdraw
 
