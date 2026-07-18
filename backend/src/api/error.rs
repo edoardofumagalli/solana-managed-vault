@@ -162,6 +162,14 @@ impl ApiError {
             message,
         )
     }
+
+    pub fn db_request_failed(message: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::DbRequestFailed,
+            message,
+        )
+    }
 }
 
 impl IntoResponse for ApiError {
@@ -208,6 +216,7 @@ pub enum ApiErrorCode {
     RpcRequestFailed,
     RpcTaskFailed,
     RpcSimulationFailed,
+    DbRequestFailed,
 }
 
 impl ApiErrorCode {
@@ -231,6 +240,7 @@ impl ApiErrorCode {
             Self::RpcRequestFailed => "RPC_REQUEST_FAILED",
             Self::RpcTaskFailed => "RPC_TASK_FAILED",
             Self::RpcSimulationFailed => "RPC_SIMULATION_FAILED",
+            Self::DbRequestFailed => "DB_REQUEST_FAILED",
         }
     }
 }

@@ -1,0 +1,27 @@
+name: managed-vault
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: managed-vault-postgres
+    environment:
+      POSTGRES_USER: managed_vault
+      POSTGRES_PASSWORD: managed_vault
+      POSTGRES_DB: managed_vault_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - managed-vault-postgres-data:/var/lib/postgresql/data
+      - ./backend/migrations:/migrations:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U managed_vault -d managed_vault_dev",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  managed-vault-postgres-data:

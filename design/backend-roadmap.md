@@ -10,6 +10,8 @@ It is not a replacement for:
 - [backend-api-design.md](backend-api-design.md), which defines the API shape;
 - [managed-vault-design.md](managed-vault-design.md), which defines the on-chain model;
 - [backend-manual-testing.md](backend-manual-testing.md), which links to the local manual testing runbooks.
+- [indexer-read-side-plan.md](indexer-read-side-plan.md), which defines the
+  event-first read-side and indexing direction.
 
 Use this file as the step-by-step reference for deciding what to build next.
 
@@ -56,6 +58,12 @@ The backend now has a solid action-oriented foundation:
   - deposit into the vault;
   - deploy to module;
   - recall from module.
+- Surfpool Kamino USDC flow verified manually through the backend:
+  - fixture setup with known Kamino/Klend USDC accounts;
+  - register module;
+  - sync NAV;
+  - deploy through generic `modules/deploy`;
+  - recall through generic `modules/recall`.
 
 The backend still intentionally does not sign or send user transactions. Signing
 is kept in the local script or, later, in the wallet/client.
@@ -89,14 +97,16 @@ Simulation is now used in two distinct ways for supported endpoints:
 - This is especially useful for Kamino/Klend CPIs, which are the flows most
   likely to need compute tuning.
 
-The read side is a separate future phase:
+The read side is a separate phase and now has its own event-first plan:
 
-- For a real application, the backend should not fetch every UI-facing balance
-  and state field from RPC on every request.
-- Webhooks/indexing can keep a database in sync with relevant program accounts
-  and events.
-- Read endpoints can then serve balances, vault state, positions, ticket state,
-  NAV, and user analytics from the database.
+- [indexer-read-side-plan.md](indexer-read-side-plan.md) is the current source
+  of truth for this direction.
+- Application history and materialized read models should be built from Anchor
+  events emitted by the vault program.
+- RPC should remain available for bootstrap, reconciliation, debugging, and
+  external live balances such as SPL token accounts and mint supply.
+- The first practical step is a local parser that decodes existing `emit!`
+  events from known transaction signatures.
 
 Microservices are not the first concern:
 
@@ -122,6 +132,13 @@ Keep these decisions stable unless we explicitly change the design:
 - Manual scripts stay modular rather than one large E2E runner.
 - Manager/admin inspect scripts remain deferred until the next higher-priority
   flows are stable.
+- The durable read API should be event-indexed, not RPC-scanned on every
+  request.
+- RPC reads are still useful for bootstrap, reconciliation, debug flows, and
+  external live token balances.
+- Do not migrate events to `emit_cpi!` yet. First build the parser and read
+  models against the existing `emit!` events, then decide which critical events
+  need stronger delivery guarantees.
 
 ## Kamino Account Source
 
@@ -372,30 +389,48 @@ Definition of done:
 - High-CPI flows such as Kamino deploy/recall request enough compute units.
 - Low-CU flows can avoid relying on the default compute budget.
 
-### 6. Read API And Indexing Design
+### 6. Read API And Event Indexing
 
-Goal: move from transaction-building only to app-facing data.
+Goal: move from transaction-building only to app-facing read data without
+rebuilding complex state from live RPC calls on every request.
 
 Steps:
 
-1. Decide the first read endpoints:
-   - vault overview;
-   - user position;
-   - token balances;
-   - pending withdraw tickets;
-   - module NAV state;
-   - manager float state.
-2. Decide whether the first version reads directly from RPC or from a local DB.
-3. Design an indexing/webhook pipeline for later:
-   - listen to relevant program activity;
-   - update database state;
-   - serve read endpoints from the DB.
-4. Keep the action API independent from the read API boundary.
+1. Build a local event parser prototype for one confirmed transaction
+   signature.
+2. Decode existing Anchor `emit!` logs for the core vault program.
+3. Normalize decoded events into a stable JSON shape containing:
+   - signature;
+   - slot;
+   - block time when available;
+   - program id;
+   - event name;
+   - event data;
+   - ordering metadata.
+4. Test the parser against known manual-test signatures:
+   - deposit;
+   - request/cancel/process withdraw;
+   - module register/sync/deploy/recall;
+   - Kamino deploy/recall.
+5. Use the normalized event stream to design the first materialized read models:
+   - vault event timeline;
+   - tickets;
+   - modules;
+   - vault snapshots;
+   - user positions;
+   - manager activity.
+6. Draft read endpoint response DTOs from those materialized models.
+7. Revisit event gaps and `emit_cpi!` candidates before modifying Anchor event
+   structs.
+8. Keep the action API independent from the read API boundary.
 
 Definition of done:
 
-- Frontend-facing read requirements are explicit.
-- We know which data still needs live RPC and which data can be indexed.
+- A script can decode managed-vault events from known transaction signatures.
+- The normalized event output is stable enough to become database input.
+- The first read models are explicit and map back to emitted Anchor events.
+- RPC usage is limited to bootstrap, reconciliation, debugging, and live
+  external balances.
 
 ### 7. Deployment And Operations
 
@@ -433,20 +468,23 @@ These are useful, but not the next move:
 - Manager/admin inspect scripts.
 - Address lookup table optimization.
 - Full Kamino account discovery for every reserve.
-- Database-backed read API.
+- Production database-backed read API.
 - Microservice split.
 - Mainnet deployment.
 
 ## Next Concrete Step
 
-Start with **Kamino Backend Design**.
+Start with **Read API And Event Indexing**.
 
-The first implementation task should be a read-only analysis pass:
+The first implementation task should be a local parser prototype:
 
-1. Inspect `kamino_yield_module` instruction account structs.
-2. Inspect `tests/surfpool/kamino/real_usdc_flow.ts`.
-3. Map the proven Surfpool accounts into backend request JSON.
-4. Decide whether to add only fixture/script helpers first or a backend
-   Kamino-specific helper layer.
+1. Take one known confirmed transaction signature as input.
+2. Fetch the transaction from the configured RPC endpoint.
+3. Parse the logs for core vault `Program data: ...` entries emitted through
+   Anchor `emit!`.
+4. Decode the event payloads using the Anchor IDL/event discriminators.
+5. Print or save normalized JSON events.
+6. Validate the output against known backend manual-test transactions.
 
-Only after that mapping is clear should we modify backend code.
+Only after this parser works should we design database tables or implement
+read endpoints.

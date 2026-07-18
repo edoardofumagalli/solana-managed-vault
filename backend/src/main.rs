@@ -1,21 +1,7 @@
-mod api;
-mod builders;
-mod config;
-mod routes;
-mod services;
-
-use std::sync::Arc;
-
-use config::AppConfig;
-use solana_client::rpc_client::RpcClient;
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-#[derive(Clone)]
-pub struct AppState {
-    pub config: Arc<AppConfig>,
-    pub rpc_client: Arc<RpcClient>,
-}
+use managed_vault_backend::{config::AppConfig, routes, services, AppState};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -24,10 +10,8 @@ async fn main() -> anyhow::Result<()> {
     let config = AppConfig::from_env()?;
     let bind_address = config.bind_address;
     let rpc_client = services::rpc::create_rpc_client(&config);
-    let state = AppState {
-        config: Arc::new(config),
-        rpc_client: Arc::new(rpc_client),
-    };
+    let db_pool = services::db::create_pool(&config).await?;
+    let state = AppState::new(config, rpc_client, db_pool);
 
     let app = routes::router(state);
     let listener = TcpListener::bind(bind_address).await?;
